@@ -1,0 +1,103 @@
+version: "3.8"
+
+services:
+  proxy-sqlite001:
+    image: "${ZABBIX_PROXY_IMAGE:?ZABBIX_PROXY_IMAGE is required}"
+    hostname: "${PROXY_HOSTNAME:?PROXY_HOSTNAME is required}"
+    cap_add:
+      - NET_RAW
+    environment:
+      TZ: "${TZ:-America/Sao_Paulo}"
+      ZBX_PROXYMODE: "0"
+      ZBX_HOSTNAME: "${PROXY_HOSTNAME}"
+      ZBX_SERVER_HOST: "${PROXY_SERVER_HOSTS:?PROXY_SERVER_HOSTS is required}"
+      ZBX_TIMEOUT: "${PROXY_TIMEOUT:-5}"
+      ZBX_PROXYCONFIGFREQUENCY: "${PROXY_CONFIG_FREQUENCY:-60}"
+      ZBX_DATASENDERFREQUENCY: "${PROXY_DATA_SENDER_FREQUENCY:-1}"
+      ZBX_LISTENPORT: "10051"
+      ZBX_STARTPOLLERSUNREACHABLE: "${PROXY_STARTPOLLERSUNREACHABLE:-50}"
+      ZBX_STARTPOLLERS: "${PROXY_STARTPOLLERS:-200}"
+      ZBX_STARTHTTPPOLLERS: "${PROXY_STARTHTTPPOLLERS:-200}"
+      ZBX_CACHESIZE: "${PROXY_CACHESIZE:-1G}"
+      ZBX_STARTDBSYNCERS: "${PROXY_STARTDBSYNCERS:-2}"
+      ZBX_HISTORYCACHESIZE: "${PROXY_HISTORYCACHESIZE:-1G}"
+      ZBX_HISTORYINDEXCACHESIZE: "${PROXY_HISTORYINDEXCACHESIZE:-1G}"
+      ZBX_STARTIPMIPOLLERS: "${PROXY_STARTIPMIPOLLERS:-5}"
+      ZBX_STARTPREPROCESSORS: "${PROXY_STARTPREPROCESSORS:-200}"
+      ZBX_STARTTRAPPERS: "${PROXY_STARTTRAPPERS:-15}"
+      ZBX_STARTVMWARECOLLECTORS: "${PROXY_STARTVMWARECOLLECTORS:-50}"
+      ZBX_VMWAREFREQUENCY: "${PROXY_VMWAREFREQUENCY:-60}"
+      ZBX_VMWAREPERFFREQUENCY: "${PROXY_VMWAREPERFFREQUENCY:-60}"
+      ZBX_VMWARECACHESIZE: "${PROXY_VMWARECACHESIZE:-1G}"
+      ZBX_VMWARETIMEOUT: "${PROXY_VMWARETIMEOUT:-60}"
+      ZBX_STARTPINGERS: "${PROXY_STARTPINGERS:-100}"
+      ZBX_HOUSEKEEPINGFREQUENCY: "${PROXY_HOUSEKEEPINGFREQUENCY:-0}"
+      ZBX_TLSCONNECT: cert
+      ZBX_TLSACCEPT: cert
+      ZBX_TLSCAFILE: /run/secrets/zabbix_ca
+      ZBX_TLSCERTFILE: /run/secrets/zabbix_proxy_cert
+      ZBX_TLSKEYFILE: /run/secrets/zabbix_proxy_key
+    secrets:
+      - source: zabbix_ca
+        target: zabbix_ca
+      - source: zabbix_proxy_cert
+        target: zabbix_proxy_cert
+      - source: zabbix_proxy_key
+        target: zabbix_proxy_key
+    networks:
+      - zabbix
+    ports:
+      - target: 10051
+        published: ${PROXY_PUBLISHED_SERVER_PORT:-10011}
+        protocol: tcp
+        mode: ingress
+      - target: 10050
+        published: ${PROXY_PUBLISHED_AGENT_PORT:-10010}
+        protocol: tcp
+        mode: ingress
+    volumes:
+      - type: bind
+        source: "${PROXY_DATA_PATH:?PROXY_DATA_PATH is required}"
+        target: /var/lib/zabbix/db_data
+      - type: bind
+        source: "${ZABBIX_MIBS_PATH:?ZABBIX_MIBS_PATH is required}"
+        target: /var/lib/zabbix/mibs
+        read_only: true
+    deploy:
+      replicas: ${PROXY_REPLICAS:-1}
+      placement:
+        constraints:
+          - "node.platform.os == linux"
+          - "node.labels.zabbix_proxy == ${PROXY_NODE_LABEL:-proxy1}"
+      resources:
+        limits:
+          cpus: "${PROXY_CPU_LIMIT:-8}"
+          memory: "${PROXY_MEMORY_LIMIT:-5G}"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+      update_config:
+        parallelism: 1
+        order: stop-first
+        failure_action: rollback
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "5"
+
+networks:
+  zabbix:
+    external: true
+    name: "${ZABBIX_NETWORK:?ZABBIX_NETWORK is required}"
+
+secrets:
+  zabbix_ca:
+    external: true
+    name: "${ZABBIX_CA_SECRET:?ZABBIX_CA_SECRET is required}"
+  zabbix_proxy_cert:
+    external: true
+    name: "${ZABBIX_PROXY_CERT_SECRET:?ZABBIX_PROXY_CERT_SECRET is required}"
+  zabbix_proxy_key:
+    external: true
+    name: "${ZABBIX_PROXY_KEY_SECRET:?ZABBIX_PROXY_KEY_SECRET is required}"

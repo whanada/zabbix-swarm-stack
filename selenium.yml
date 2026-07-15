@@ -1,0 +1,49 @@
+version: "3.8"
+
+services:
+  selenium:
+    image: "${SELENIUM_IMAGE:?SELENIUM_IMAGE is required}"
+    hostname: selenium
+    volumes:
+      - type: tmpfs
+        target: /dev/shm
+        tmpfs:
+          size: ${SELENIUM_SHM_SIZE_BYTES:-2147483648}
+    networks:
+      zabbix:
+        aliases:
+          - selenium
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:4444/status >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      replicas: ${SELENIUM_REPLICAS:-1}
+      placement:
+        constraints:
+          - "node.platform.os == linux"
+        preferences:
+          - spread: node.hostname
+      resources:
+        limits:
+          cpus: "${SELENIUM_CPU_LIMIT:-2}"
+          memory: "${SELENIUM_MEMORY_LIMIT:-2G}"
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+      update_config:
+        parallelism: 1
+        order: stop-first
+        failure_action: rollback
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "5"
+
+networks:
+  zabbix:
+    external: true
+    name: "${ZABBIX_NETWORK:?ZABBIX_NETWORK is required}"

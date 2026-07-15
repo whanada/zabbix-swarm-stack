@@ -1,0 +1,5 @@
+.env
+.rendered-*.yml
+.replication/
+certs/
+

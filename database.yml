@@ -1,57 +1,235 @@
+version: "3.8"
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "100m"
+    max-file: "5"
+
+x-timescale-environment: &timescale-environment
+  POSTGRES_USER_FILE: /run/secrets/postgres_admin_user
+  POSTGRES_PASSWORD_FILE: /run/secrets/postgres_admin_password
+  POSTGRES_DB: "${POSTGRES_DB:?POSTGRES_DB is required}"
+  POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+  PGDATA: /var/lib/postgresql/data/pgdata
+  TS_TUNE_MEMORY: "${TIMESCALE_TUNE_MEMORY:-16GB}"
+  TS_TUNE_NUM_CPUS: "${TIMESCALE_TUNE_CPUS:-8}"
+  TS_TUNE_MAX_CONNS: "${POSTGRES_MAX_CONNECTIONS:-300}"
+  TIMESCALEDB_TELEMETRY: "off"
+
+x-timescale-command: &timescale-command
+  - postgres
+  - -c
+  - "listen_addresses=*"
+  - -c
+  - "password_encryption=scram-sha-256"
+  - -c
+  - "shared_preload_libraries=timescaledb"
+  - -c
+  - "wal_level=${POSTGRES_WAL_LEVEL:-logical}"
+  - -c
+  - "max_wal_senders=${POSTGRES_MAX_WAL_SENDERS:-10}"
+  - -c
+  - "max_replication_slots=${POSTGRES_MAX_REPLICATION_SLOTS:-10}"
+  - -c
+  - "max_logical_replication_workers=${POSTGRES_MAX_LOGICAL_REPLICATION_WORKERS:-8}"
+  - -c
+  - "max_sync_workers_per_subscription=${POSTGRES_MAX_SYNC_WORKERS_PER_SUBSCRIPTION:-4}"
+  - -c
+  - "max_worker_processes=${POSTGRES_MAX_WORKER_PROCESSES:-32}"
+  - -c
+  - "max_connections=${POSTGRES_MAX_CONNECTIONS:-300}"
+  - -c
+  - "statement_timeout=${POSTGRES_STATEMENT_TIMEOUT:-5min}"
+  - -c
+  - "shared_buffers=${POSTGRES_SHARED_BUFFERS:-4GB}"
+  - -c
+  - "effective_cache_size=${POSTGRES_EFFECTIVE_CACHE_SIZE:-12GB}"
+  - -c
+  - "maintenance_work_mem=${POSTGRES_MAINTENANCE_WORK_MEM:-1GB}"
+  - -c
+  - "work_mem=${POSTGRES_WORK_MEM:-8MB}"
+  - -c
+  - "checkpoint_completion_target=0.9"
+  - -c
+  - "wal_compression=on"
+  - -c
+  - "min_wal_size=${POSTGRES_MIN_WAL_SIZE:-1GB}"
+  - -c
+  - "max_wal_size=${POSTGRES_MAX_WAL_SIZE:-4GB}"
+  - -c
+  - "random_page_cost=1.1"
+  - -c
+  - "effective_io_concurrency=200"
+
+x-timescale-secrets: &timescale-secrets
+  - source: postgres_admin_user
+    target: postgres_admin_user
+  - source: postgres_admin_password
+    target: postgres_admin_password
+
+x-timescale-resources: &timescale-resources
+  limits:
+    cpus: "${TIMESCALE_CPU_LIMIT:-8}"
+    memory: "${TIMESCALE_MEMORY_LIMIT:-16G}"
+  reservations:
+    cpus: "${TIMESCALE_CPU_RESERVATION:-2}"
+    memory: "${TIMESCALE_MEMORY_RESERVATION:-4G}"
+
 services:
-  db-server:
-    hostname: zabbixdbserverhost
-    image: timescale/timescaledb:2.14.2-pg16
-    environment:
-      POSTGRES_USER: "<DB_USER>"
-      POSTGRES_PASSWORD: "<DB_PASSWORD>"
-      POSTGRES_DB: "postgres"
-      POSTGRES_MAX_CONNECTIONS: 3000
+  timescaledb-primary:
+    image: "${TIMESCALE_IMAGE:?TIMESCALE_IMAGE is required}"
+    hostname: timescaledb-primary
+    environment: *timescale-environment
+    command: *timescale-command
+    secrets: *timescale-secrets
     networks:
-      - <NETWORK>
+      zabbix:
+        aliases:
+          - timescaledb-primary
     volumes:
-      - /var/lib/pgsql/pgdata:/var/lib/postgresql/data
+      - type: bind
+        source: "${TIMESCALE_PRIMARY_DATA_PATH:?TIMESCALE_PRIMARY_DATA_PATH is required}"
+        target: /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$(cat /run/secrets/postgres_admin_user)\" -d \"${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    stop_grace_period: 2m
     deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - "node.platform.os == linux"
+          - "node.labels.timescaledb == ${TIMESCALE_PRIMARY_NODE_LABEL:-primary}"
+      resources: *timescale-resources
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        window: 2m
+      update_config:
+        parallelism: 1
+        order: stop-first
+        failure_action: rollback
+    logging: *default-logging
+
+  timescaledb-subscriber:
+    image: "${TIMESCALE_IMAGE:?TIMESCALE_IMAGE is required}"
+    hostname: timescaledb-subscriber
+    environment: *timescale-environment
+    command: *timescale-command
+    secrets: *timescale-secrets
+    networks:
+      zabbix:
+        aliases:
+          - timescaledb-subscriber
+    volumes:
+      - type: bind
+        source: "${TIMESCALE_SUBSCRIBER_DATA_PATH:?TIMESCALE_SUBSCRIBER_DATA_PATH is required}"
+        target: /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$(cat /run/secrets/postgres_admin_user)\" -d \"${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    stop_grace_period: 2m
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - "node.platform.os == linux"
+          - "node.labels.timescaledb == ${TIMESCALE_SUBSCRIBER_NODE_LABEL:-subscriber}"
+      resources: *timescale-resources
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        window: 2m
+      update_config:
+        parallelism: 1
+        order: stop-first
+        failure_action: rollback
+    logging: *default-logging
+
+  pgbouncer:
+    image: "${PGBOUNCER_IMAGE:?PGBOUNCER_IMAGE is required}"
+    hostname: pgbouncer
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        export DB_USER="$$(cat /run/secrets/zabbix_db_user)"
+        export DB_PASSWORD="$$(cat /run/secrets/zabbix_db_password)"
+        exec /entrypoint.sh /usr/bin/pgbouncer /etc/pgbouncer/pgbouncer.ini
+    environment:
+      DB_HOST: "${PGBOUNCER_DB_HOST:-timescaledb-primary}"
+      DB_PORT: "${PGBOUNCER_DB_PORT:-5432}"
+      DB_NAME: "${POSTGRES_DB:?POSTGRES_DB is required}"
+      AUTH_TYPE: scram-sha-256
+      POOL_MODE: "${PGBOUNCER_POOL_MODE:-session}"
+      MAX_CLIENT_CONN: "${PGBOUNCER_MAX_CLIENT_CONN:-3000}"
+      DEFAULT_POOL_SIZE: "${PGBOUNCER_DEFAULT_POOL_SIZE:-100}"
+      MIN_POOL_SIZE: "${PGBOUNCER_MIN_POOL_SIZE:-10}"
+      RESERVE_POOL_SIZE: "${PGBOUNCER_RESERVE_POOL_SIZE:-20}"
+      RESERVE_POOL_TIMEOUT: "${PGBOUNCER_RESERVE_POOL_TIMEOUT:-5}"
+      MAX_PREPARED_STATEMENTS: "${PGBOUNCER_MAX_PREPARED_STATEMENTS:-100}"
+      SERVER_RESET_QUERY: DISCARD ALL
+      SERVER_CHECK_DELAY: "10"
+      SERVER_LOGIN_RETRY: "5"
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits
+    secrets:
+      - source: zabbix_db_user
+        target: zabbix_db_user
+      - source: zabbix_db_password
+        target: zabbix_db_password
+    networks:
+      zabbix:
+        aliases:
+          - pgbouncer
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -d \"${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    deploy:
+      replicas: ${PGBOUNCER_REPLICAS:-2}
+      endpoint_mode: vip
+      placement:
+        constraints:
+          - "node.platform.os == linux"
+        preferences:
+          - spread: node.hostname
+        max_replicas_per_node: 1
       resources:
         limits:
-          cpus: '2'
-          memory: "2G"
-      placement:
-        constraints: [node.role == manager]
-    ports:
-      - '5432:5432'
-    command: |
-      postgres 
-      -c wal_level=logical
-      -c hot_standby=on 
-      -c max_wal_senders=1
-      -c max_replication_slots=1 
-      -c hot_standby_feedback=on
-      -c max_connections=100
-      -c statement_timeout='5min'
-      -c shared_buffers=256MB
-      -c effective_cache_size=512MB
-      -c maintenance_work_mem=768MB
-      -c checkpoint_completion_target=0.9
-        -c wal_buffers=16MB
-        -c default_statistics_target=100
-        -c random_page_cost=1.1
-        -c effective_io_concurrency=200
-        -c work_mem=1MB
-        -c huge_pages=off
-        -c min_wal_size=200MB
-        -c max_wal_size=400MB
-        -c max_worker_processes=4
-        -c max_parallel_workers_per_gather=2
-        -c max_parallel_workers=4
-        -c max_parallel_maintenance_workers=2
-        -c shared_preload_libraries=timescaledb        
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "100m"
+          cpus: "${PGBOUNCER_CPU_LIMIT:-2}"
+          memory: "${PGBOUNCER_MEMORY_LIMIT:-1G}"
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+      update_config:
+        parallelism: 1
+        order: start-first
+        failure_action: rollback
+    logging: *default-logging
 
 networks:
-  <NETWORK>:
+  zabbix:
     external: true
+    name: "${ZABBIX_NETWORK:?ZABBIX_NETWORK is required}"
 
+secrets:
+  postgres_admin_user:
+    external: true
+    name: "${POSTGRES_ADMIN_USER_SECRET:?POSTGRES_ADMIN_USER_SECRET is required}"
+  postgres_admin_password:
+    external: true
+    name: "${POSTGRES_ADMIN_PASSWORD_SECRET:?POSTGRES_ADMIN_PASSWORD_SECRET is required}"
+  zabbix_db_user:
+    external: true
+    name: "${ZABBIX_DB_USER_SECRET:?ZABBIX_DB_USER_SECRET is required}"
+  zabbix_db_password:
+    external: true
+    name: "${ZABBIX_DB_PASSWORD_SECRET:?ZABBIX_DB_PASSWORD_SECRET is required}"

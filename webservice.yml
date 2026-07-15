@@ -1,0 +1,43 @@
+version: "3.8"
+
+services:
+  webservice:
+    image: "${ZABBIX_WEBSERVICE_IMAGE:?ZABBIX_WEBSERVICE_IMAGE is required}"
+    hostname: webservice
+    cap_add:
+      - SYS_ADMIN
+    environment:
+      ZBX_ALLOWEDIP: "${WEBSERVICE_ALLOWED_IP:-0.0.0.0/0}"
+      TZ: "${TZ:-America/Sao_Paulo}"
+    networks:
+      zabbix:
+        aliases:
+          - webservice
+    deploy:
+      replicas: ${WEBSERVICE_REPLICAS:-1}
+      placement:
+        constraints:
+          - "node.platform.os == linux"
+        preferences:
+          - spread: node.hostname
+      resources:
+        limits:
+          cpus: "${WEBSERVICE_CPU_LIMIT:-2}"
+          memory: "${WEBSERVICE_MEMORY_LIMIT:-1G}"
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+      update_config:
+        parallelism: 1
+        order: start-first
+        failure_action: rollback
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "5"
+
+networks:
+  zabbix:
+    external: true
+    name: "${ZABBIX_NETWORK:?ZABBIX_NETWORK is required}"

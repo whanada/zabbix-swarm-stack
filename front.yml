@@ -1,30 +1,81 @@
+version: "3.8"
+
 services:
   front:
-    image: zabbix/zabbix-web-nginx-pgsql:7.0.17-ol
-    hostname: zabbixfront
+    image: "${ZABBIX_WEB_IMAGE:?ZABBIX_WEB_IMAGE is required}"
+    hostname: zabbix-front
+    environment:
+      DB_SERVER_HOST: pgbouncer
+      DB_SERVER_PORT: "5432"
+      POSTGRES_USER_FILE: /run/secrets/zabbix_db_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/zabbix_db_password
+      POSTGRES_DB: "${POSTGRES_DB:?POSTGRES_DB is required}"
+      POSTGRES_USE_IMPLICIT_SEARCH_PATH: "true"
+      # Empty by design: native Zabbix HA resolves the active server from the DB.
+      ZBX_SERVER_HOST: ""
+      ZBX_SERVER_NAME: "${ZABBIX_FRONTEND_NAME:-Zabbix}"
+      PHP_TZ: "${TZ:-America/Sao_Paulo}"
+    secrets:
+      - source: zabbix_db_user
+        target: zabbix_db_user
+      - source: zabbix_db_password
+        target: zabbix_db_password
+    networks:
+      - zabbix
+      - traefik
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:8080/ >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
     deploy:
+      replicas: ${ZABBIX_FRONTEND_REPLICAS:-2}
+      placement:
+        constraints:
+          - "node.platform.os == linux"
+        preferences:
+          - spread: node.hostname
+        max_replicas_per_node: 1
       resources:
         limits:
-          cpus: '2'
-          memory: "1G"
-      placement:
-        constraints: [node.role == manager]
-    networks:
-      - <NETWORK>
-    ports:
-      - '8080:8080'
-    environment:
-      DB_SERVER_HOST: zabbixdbserverhost
-      DB_SERVER_PORT: 5432
-      POSTGRES_USER: <DB_USER>
-      POSTGRES_PASSWORD: <DB_PASSWORD>
-      POSTGRES_DB: zabbix
-      ZBX_SERVER_NAME: zabbix
+          cpus: "${ZABBIX_FRONTEND_CPU_LIMIT:-8}"
+          memory: "${ZABBIX_FRONTEND_MEMORY_LIMIT:-1G}"
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+      update_config:
+        parallelism: 1
+        order: start-first
+        failure_action: rollback
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=${TRAEFIK_NETWORK:?TRAEFIK_NETWORK is required}"
+        - "traefik.http.routers.zabbix.rule=Host(`${ZABBIX_FRONTEND_HOST:?ZABBIX_FRONTEND_HOST is required}`)"
+        - "traefik.http.routers.zabbix.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
+        - "traefik.http.routers.zabbix.tls=true"
+        - "traefik.http.routers.zabbix.tls.certresolver=${TRAEFIK_CERTRESOLVER:?TRAEFIK_CERTRESOLVER is required}"
+        - "traefik.http.routers.zabbix.service=zabbix-frontend"
+        - "traefik.http.services.zabbix-frontend.loadbalancer.server.port=8080"
+        - "traefik.http.services.zabbix-frontend.loadbalancer.passhostheader=true"
     logging:
-      driver: "json-file"
+      driver: json-file
       options:
         max-size: "100m"
+        max-file: "5"
 
 networks:
-  <NETWORK>:
+  zabbix:
     external: true
+    name: "${ZABBIX_NETWORK:?ZABBIX_NETWORK is required}"
+  traefik:
+    external: true
+    name: "${TRAEFIK_NETWORK:?TRAEFIK_NETWORK is required}"
+
+secrets:
+  zabbix_db_user:
+    external: true
+    name: "${ZABBIX_DB_USER_SECRET:?ZABBIX_DB_USER_SECRET is required}"
+  zabbix_db_password:
+    external: true
+    name: "${ZABBIX_DB_PASSWORD_SECRET:?ZABBIX_DB_PASSWORD_SECRET is required}"
