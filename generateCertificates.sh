@@ -99,4 +99,3 @@ if [[ "${CREATE_SECRETS}" == "true" ]]; then
 fi
 
 echo "Certificates generated in ${output_dir}."
-
