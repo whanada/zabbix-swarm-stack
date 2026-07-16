@@ -11,6 +11,72 @@ This project deploys:
 
 The logical subscriber is not a complete database replica or an automatic failover solution. PgBouncer deliberately targets `timescaledb-primary`. PostgreSQL logical replication does not replicate DDL or sequence state, and native logical replication does not reliably follow TimescaleDB's dynamically created hypertable chunks. The bootstrap creates an initial Timescale-aware snapshot, but subsequent PUB/SUB should be treated as synchronization for ordinary tables only—not for Zabbix history, trends, or audit hypertables. Use physical streaming replication with a failover manager such as Patroni when a complete standby or automatic database failover is required.
 
+## Architecture and application flow
+
+```mermaid
+flowchart LR
+    users["Users and operators"]
+    zabbixclients["External Zabbix agents,<br/>senders and proxies"]
+    monitored["Monitored hosts and devices"]
+
+    subgraph edge["Traefik edge"]
+        webentry["websecure entrypoint<br/>HTTPS 443"]
+        zabbixentry["zabbix-tcp entrypoint<br/>TCP 10051"]
+    end
+
+    subgraph application["Zabbix application tier"]
+        frontend["Zabbix frontend<br/>2 replicas"]
+
+        subgraph ha["Native Zabbix server HA"]
+            ha1["Server HA1<br/>active or standby"]
+            ha2["Server HA2<br/>active or standby"]
+        end
+
+        pgbouncer["PgBouncer<br/>2 replicas behind a Swarm VIP"]
+        webservice["Zabbix web service<br/>scheduled reports"]
+        selenium["Selenium WebDriver<br/>browser checks"]
+        proxy["Optional Zabbix proxy<br/>active mode with SQLite"]
+    end
+
+    subgraph data["TimescaleDB data tier on separate labeled nodes"]
+        primary["TimescaleDB primary<br/>application read/write target"]
+        subscriber["TimescaleDB subscriber<br/>logical subscription target"]
+    end
+
+    users -->|HTTPS| webentry
+    webentry -->|HTTP 8080 on the Traefik overlay| frontend
+    zabbixclients -->|Zabbix TCP 10051| zabbixentry
+    zabbixentry -->|TCP router to the HA service| ha1
+    zabbixentry -->|TCP router to the HA service| ha2
+
+    frontend -->|SQL 5432| pgbouncer
+    ha1 -->|SQL 5432| pgbouncer
+    ha2 -->|SQL 5432| pgbouncer
+    pgbouncer -->|pooled PostgreSQL 5432| primary
+
+    frontend -. active server API 10051 selected from DB HA state .-> ha1
+    frontend -. active server API 10051 selected from DB HA state .-> ha2
+
+    ha1 -->|report requests 10053| webservice
+    ha2 -->|report requests 10053| webservice
+    webservice -. renders the requested frontend URL .-> frontend
+
+    ha1 -->|browser checks 4444| selenium
+    ha2 -->|browser checks 4444| selenium
+
+    monitored <-->|monitoring traffic| proxy
+    proxy -->|active proxy TLS 10051| ha1
+    proxy -->|active proxy TLS 10051| ha2
+
+    primary -->|optional logical PUB/SUB for ordinary public-schema tables| subscriber
+```
+
+Traefik is the external edge for both application paths: the `websecure` entrypoint routes HTTPS requests to the frontend, while the `zabbix-tcp` entrypoint accepts external Zabbix traffic on TCP port 10051 and forwards it to the HA server service. The optional in-cluster proxy remains on the backend overlay and connects directly to the configured HA server addresses.
+
+The TCP route in the diagram is the intended edge flow. The current `ha_server.yml` still publishes the server ports directly and does not yet define the `zabbix-tcp` Traefik entrypoint/router labels; those deployment settings must be added before using Traefik for port 10051.
+
+Both HA servers share the primary database through PgBouncer and coordinate their active/standby state through the database; there is no direct HA synchronization link between them. The frontend also uses the database HA state to reach the active server's `NodeAddress`. The logical subscriber is deliberately outside the application connection path and is not an automatic failover target.
+
 ## 1. Configure the environment
 
 The committed `.env.example` contains every supported setting. The local `.env` is ignored by Git and contains configuration and Docker secret names only; password and private-key values are stored as Swarm secrets. PostgreSQL administration and Zabbix application credentials are separate, so the application does not connect as a database superuser. The defaults deliberately pair Zabbix 7.0.28 with TimescaleDB 2.27.2, which is inside the supported Zabbix 7.0 compatibility range; review that matrix before changing either image.
