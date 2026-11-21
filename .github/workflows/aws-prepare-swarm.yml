@@ -1,0 +1,47 @@
+name: AWS prepare Swarm nodes
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: zabbix-ha-aws-deployment
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    environment: production
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: us-east-1
+      AWS_DEFAULT_REGION: us-east-1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ANSIBLE_ROLE_ARN }}
+          aws-region: us-east-1
+      - name: Install Ansible dependencies
+        run: |
+          python3 -m pip install 'ansible-core>=2.17,<2.20' boto3 botocore
+          ansible-galaxy collection install -r ansible/requirements.yml -p ansible/collections
+      - name: Install AWS Session Manager plugin
+        run: |
+          curl -fsSL https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb -o /tmp/session-manager-plugin.deb
+          sudo dpkg -i /tmp/session-manager-plugin.deb
+      - name: Read SSM transfer bucket from Terraform state
+        working-directory: terraform/aws
+        run: |
+          terraform init -input=false -lockfile=readonly -backend-config=backend.hcl.example
+          echo "ANSIBLE_SSM_BUCKET=$(terraform output -raw ansible_transfer_bucket)" >> "$GITHUB_ENV"
+      - name: Validate target inventory
+        run: ansible-inventory -i ansible/inventory/aws.aws_ec2.yml --graph
+      - name: Configure encrypted Swarm and placement
+        run: ansible-playbook -i ansible/inventory/aws.aws_ec2.yml ansible/aws/prepare-swarm.yml
+      - name: Prepare dedicated EBS volumes
+        run: ansible-playbook -i ansible/inventory/aws.aws_ec2.yml ansible/aws/prepare-volumes.yml

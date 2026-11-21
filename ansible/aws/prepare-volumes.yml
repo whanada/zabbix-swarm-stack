@@ -1,0 +1,36 @@
+---
+- name: Prepare dedicated worker volumes
+  hosts: swarm_workers
+  become: true
+  gather_facts: false
+  vars:
+    data_services: "{{ ['postgres', 'etcd', 'clickhouse', 'keeper'] + (['proxy'] if tags.NodeIndex == '3' else []) }}"
+    data_root: /var/lib/zabbix-ha
+  tasks:
+    - name: Query EBS volume IDs by unique Terraform tags
+      amazon.aws.ec2_vol_info:
+        region: us-east-1
+        filters:
+          tag:Project: zabbix-ha
+          tag:SwarmNode: "worker-{{ tags.NodeIndex }}"
+          tag:DataService: "{{ item }}"
+          attachment.instance-id: "{{ inventory_hostname }}"
+      delegate_to: localhost
+      become: false
+      loop: "{{ data_services }}"
+      register: ebs_volumes
+
+    - name: Require exactly one attached volume per service
+      ansible.builtin.assert:
+        that: item.volumes | length == 1
+        fail_msg: "Expected one attached EBS volume for {{ item.item }} on {{ inventory_hostname }}."
+      loop: "{{ ebs_volumes.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Prepare each verified disk
+      ansible.builtin.include_tasks: tasks/prepare-volume.yml
+      loop: "{{ ebs_volumes.results }}"
+      loop_control:
+        loop_var: disk
+        label: "{{ disk.item }}"

@@ -1,0 +1,6 @@
+---
+# AWS credentials are obtained from the current session or GitHub OIDC.
+- import_playbook: build-patroni-image.yml
+  vars:
+    image_push: true
+    image_name: "{{ lookup('env', 'PATRONI_IMAGE') }}"

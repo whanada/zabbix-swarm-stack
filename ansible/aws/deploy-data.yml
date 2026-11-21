@@ -1,0 +1,62 @@
+---
+- import_playbook: ../traefik-encrypted-networks.yml
+  vars:
+    traefik_overlay_networks: [zabbix_backend, zabbix_traefik]
+    ansible_become: true
+
+- name: Deploy the PostgreSQL and etcd data tier
+  hosts: swarm_manager_primary
+  become: true
+  gather_facts: false
+  vars_files:
+    - vars/images.yml
+  vars:
+    patroni_contents: "{{ lookup('file', playbook_dir + '/files/patroni.yml') }}"
+    haproxy_contents: "{{ lookup('file', playbook_dir + '/files/haproxy.cfg') }}"
+    pgbouncer_haproxy_contents: "{{ lookup('file', playbook_dir + '/files/pgbouncer-haproxy.cfg') }}"
+    patroni_config_name: "zbx_patroni_{{ (patroni_contents | hash('sha256'))[:12] }}"
+    haproxy_config_name: "zbx_db_haproxy_{{ (haproxy_contents | hash('sha256'))[:12] }}"
+    pgbouncer_haproxy_config_name: "zbx_pool_haproxy_{{ (pgbouncer_haproxy_contents | hash('sha256'))[:12] }}"
+  tasks:
+    - name: Require existing Swarm secrets before deploying the data tier
+      ansible.builtin.command:
+        argv: [docker, secret, inspect, "{{ item }}"]
+      loop: [patroni_superuser_password, patroni_replication_password, zabbix_db_user, zabbix_db_password, metrics_pgbouncer_password]
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Prepare Docker configs
+      ansible.builtin.include_tasks: tasks/docker-config.yml
+      loop:
+        - { name: "{{ patroni_config_name }}", content: "{{ patroni_contents }}" }
+        - { name: "{{ haproxy_config_name }}", content: "{{ haproxy_contents }}" }
+        - { name: "{{ pgbouncer_haproxy_config_name }}", content: "{{ pgbouncer_haproxy_contents }}" }
+      loop_control:
+        loop_var: config_item
+        label: "{{ config_item.name }}"
+      when: not ansible_check_mode
+
+    - name: Render the database stack
+      ansible.builtin.template:
+        src: templates/data-stack.yml.j2
+        dest: /tmp/zabbix-data-stack.yml
+        mode: '0600'
+    - name: Validate the rendered Swarm stack
+      ansible.builtin.command: docker stack config -c /tmp/zabbix-data-stack.yml
+      changed_when: false
+      when: not ansible_check_mode
+    - name: Deploy data tier with short-lived ECR credentials
+      when: not ansible_check_mode
+      block:
+        - name: Log in to ECR for the deployment
+          ansible.builtin.include_tasks: tasks/ecr-login.yml
+        - name: Deploy the PostgreSQL and etcd data tier
+          ansible.builtin.command: docker stack deploy --with-registry-auth -c /tmp/zabbix-data-stack.yml zabbix_data
+          environment:
+            DOCKER_CONFIG: "{{ ecr_auth_directory.path }}"
+      always:
+        - name: Remove temporary registry credentials
+          ansible.builtin.file:
+            path: "{{ ecr_auth_directory.path }}"
+            state: absent
+          when: ecr_auth_directory.path is defined

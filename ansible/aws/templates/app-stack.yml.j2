@@ -1,0 +1,143 @@
+version: '3.8'
+services:
+  traefik:
+    image: {{ traefik_image }}
+    command:
+      - --providers.file.filename=/etc/traefik/dynamic.yml
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.zabbix.address=:10051
+      - --ping=true
+    configs:
+      - source: traefik_dynamic
+        target: /etc/traefik/dynamic.yml
+    secrets: [traefik_tls_cert, traefik_tls_key]
+    ports:
+      - {target: 80, published: 80, protocol: tcp, mode: ingress}
+      - {target: 443, published: 443, protocol: tcp, mode: ingress}
+      - {target: 10051, published: 10051, protocol: tcp, mode: ingress}
+    networks: [backend, edge]
+    deploy:
+      replicas: 2
+      placement:
+        constraints: ['node.role == manager']
+        max_replicas_per_node: 1
+
+{% for n in range(1, 4) %}
+  server{{ n }}:
+    image: {{ zabbix_server_image }}
+    environment:
+{% for key, value in zabbix_server_environment.items() %}
+{% if key not in ['ZBX_LISTENPORT', 'DB_SERVER_HOST'] %}
+      {{ key }}: {{ value | to_json }}
+{% endif %}
+{% endfor %}
+      DB_SERVER_HOST: zabbix_data_pgbouncer-router
+      ZBX_HANODENAME: zabbix-server{{ n }}
+      ZBX_LISTENPORT: '{{ 10050 + n }}'
+      ZBX_NODEADDRESS: 'zabbix_app_server{{ n }}:{{ 10050 + n }}'
+{% if zabbix_apm_enabled %}
+      ZBX_TELEMETRYPROVIDER_0: '{"provider":"clickhouse","url":"http://zabbix_clickhouse_clickhouse-router:8123","db":"otel"}'
+      ZBX_TELEMETRYPROVIDER_0_USERNAME: zabbix
+      ZBX_TELEMETRYPROVIDER_0_PASSWORD_FILE: /run/secrets/clickhouse_zabbix_password
+{% endif %}
+    secrets: [zabbix_db_user, zabbix_db_password, zabbix_ca, zabbix_server_cert, zabbix_server_key{% if zabbix_apm_enabled %}, clickhouse_zabbix_password{% endif %}]
+    networks: [backend]
+    deploy:
+      replicas: {{ 1 if n == 1 else zabbix_standby_replicas }}
+      placement:
+        constraints: ['node.labels.zabbix.slot == {{ n }}']
+
+{% endfor %}
+  frontend:
+    image: {{ zabbix_web_image }}
+    environment:
+      DB_SERVER_HOST: zabbix_data_pgbouncer-router
+      POSTGRES_USER_FILE: /run/secrets/zabbix_db_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/zabbix_db_password
+      POSTGRES_DB: zabbix
+      POSTGRES_USE_IMPLICIT_SEARCH_PATH: 'true'
+      ZBX_SERVER_HOST: ''
+      PHP_TZ: America/Sao_Paulo
+{% if zabbix_apm_enabled %}
+      ZBX_TELEMETRYPROVIDER_0: '{"provider":"clickhouse","url":"http://zabbix_clickhouse_clickhouse-router:8123","db":"otel"}'
+      ZBX_TELEMETRYPROVIDER_0_USERNAME: zabbix
+      ZBX_TELEMETRYPROVIDER_0_PASSWORD_FILE: /run/secrets/clickhouse_zabbix_password
+{% endif %}
+    secrets: [zabbix_db_user, zabbix_db_password{% if zabbix_apm_enabled %}, clickhouse_zabbix_password{% endif %}]
+    networks: [backend]
+    deploy:
+      replicas: 2
+      placement:
+        constraints: ['node.role == worker']
+        max_replicas_per_node: 1
+
+  webservice:
+    image: {{ zabbix_webservice_image }}
+    cap_add: [SYS_ADMIN]
+    environment:
+      ZBX_ALLOWEDIP: '0.0.0.0/0'
+    networks: [backend]
+    deploy:
+      placement:
+        constraints: ['node.role == worker']
+
+  selenium:
+    image: {{ selenium_image }}
+    volumes:
+      - type: tmpfs
+        target: /dev/shm
+        tmpfs:
+          size: 536870912
+    networks: [backend]
+    deploy:
+      placement:
+        constraints: ['node.role == worker']
+
+  proxy001:
+    image: {{ zabbix_proxy_image }}
+    environment:
+      ZBX_PROXYMODE: '0'
+      ZBX_HOSTNAME: {{ zabbix_proxy_hostname | to_json }}
+      ZBX_SERVER_HOST: 'zabbix_app_server1:10051;zabbix_app_server2:10052;zabbix_app_server3:10053'
+      ZBX_TLSCONNECT: cert
+      ZBX_TLSACCEPT: cert
+      ZBX_TLSCAFILE: /run/secrets/zabbix_ca
+      ZBX_TLSCERTFILE: /run/secrets/zabbix_proxy_cert
+      ZBX_TLSKEYFILE: /run/secrets/zabbix_proxy_key
+      ZBX_STARTAPMCOLLECTOR: '{{ 1 if zabbix_apm_enabled else 0 }}'
+      ZBX_APMLISTENIP: '0.0.0.0'
+      ZBX_APMLISTENPORT: '4317'
+      ZBX_STARTTELEMETRYQUERYPOLLERS: '1'
+      ZBX_CACHESIZE: 64M
+      ZBX_HISTORYCACHESIZE: 32M
+{% if zabbix_apm_enabled %}
+      ZBX_TELEMETRYPROVIDER_0: '{"provider":"clickhouse","url":"http://zabbix_clickhouse_clickhouse-router:8123","db":"otel"}'
+      ZBX_TELEMETRYPROVIDER_0_USERNAME: zabbix
+      ZBX_TELEMETRYPROVIDER_0_PASSWORD_FILE: /run/secrets/clickhouse_zabbix_password
+{% endif %}
+    secrets: [zabbix_ca, zabbix_proxy_cert, zabbix_proxy_key{% if zabbix_apm_enabled %}, clickhouse_zabbix_password{% endif %}]
+    volumes: ['/var/lib/zabbix-ha/proxy:/var/lib/zabbix/db_data']
+    networks: [backend]
+    deploy:
+      placement:
+        constraints: ['node.labels.zabbix.slot == 3']
+
+networks:
+  backend:
+    external: true
+    name: zabbix_backend
+  edge:
+    external: true
+    name: zabbix_traefik
+configs:
+  traefik_dynamic:
+    external: true
+    name: {{ traefik_dynamic_name }}
+secrets:
+{% for secret in ['zabbix_db_user', 'zabbix_db_password', 'zabbix_ca', 'zabbix_server_cert', 'zabbix_server_key', 'zabbix_proxy_cert', 'zabbix_proxy_key', 'traefik_tls_cert', 'traefik_tls_key'] + (['clickhouse_zabbix_password'] if zabbix_apm_enabled else []) %}
+  {{ secret }}:
+    external: true
+{% endfor %}

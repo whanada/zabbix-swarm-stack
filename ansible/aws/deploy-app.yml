@@ -1,0 +1,75 @@
+---
+- name: Deploy Zabbix and ingress services
+  hosts: swarm_manager_primary
+  become: true
+  gather_facts: false
+  vars_files:
+    - vars/images.yml
+    - vars/server.yml
+  vars:
+    zabbix_web_hostname: "{{ lookup('env', 'ZABBIX_FRONTEND_HOST') }}"
+    zabbix_tcp_hostname: "{{ lookup('env', 'ZABBIX_TCP_HOST') }}"
+    zabbix_proxy_hostname: "{{ lookup('env', 'ZABBIX_PROXY_HOST') | default('zabbix-proxy001', true) }}"
+    zabbix_apm_enabled: "{{ lookup('env', 'ZABBIX_APM_ENABLED') | default('false', true) | bool }}"
+    traefik_dynamic_contents: "{{ lookup('template', playbook_dir + '/templates/traefik-dynamic.yml.j2') }}"
+    traefik_dynamic_name: "zbx_traefik_{{ (traefik_dynamic_contents | hash('sha256'))[:12] }}"
+  tasks:
+    - name: Require frontend and TCP DNS names
+      ansible.builtin.assert:
+        that:
+          - zabbix_web_hostname | length > 0
+          - zabbix_tcp_hostname | length > 0
+        fail_msg: Set ZABBIX_FRONTEND_HOST and ZABBIX_TCP_HOST before deployment.
+
+    - name: Require secrets needed by the application stack
+      ansible.builtin.command:
+        argv: [docker, secret, inspect, "{{ item }}"]
+      loop: [zabbix_db_user, zabbix_db_password, zabbix_ca, zabbix_server_cert, zabbix_server_key, zabbix_proxy_cert, zabbix_proxy_key, traefik_tls_cert, traefik_tls_key]
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Create the content-addressed Traefik config
+      ansible.builtin.include_tasks: tasks/docker-config.yml
+      vars:
+        config_item:
+          name: "{{ traefik_dynamic_name }}"
+          content: "{{ traefik_dynamic_contents }}"
+      when: not ansible_check_mode
+
+    - name: Check whether the first server service already exists
+      ansible.builtin.command: docker service inspect zabbix_app_server1
+      register: first_server
+      failed_when: false
+      changed_when: false
+      check_mode: false
+
+    - name: Render the application stack
+      ansible.builtin.template:
+        src: templates/app-stack.yml.j2
+        dest: /tmp/zabbix-app-stack.yml
+        mode: '0600'
+      vars:
+        zabbix_standby_replicas: "{{ 1 if first_server.rc == 0 else 0 }}"
+
+    - name: Validate the rendered application stack
+      ansible.builtin.command: docker stack config -c /tmp/zabbix-app-stack.yml
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Deploy the application stack
+      ansible.builtin.command: docker stack deploy --with-registry-auth -c /tmp/zabbix-app-stack.yml zabbix_app
+      when: not ansible_check_mode
+
+    - name: Wait for the first active server during bootstrap
+      ansible.builtin.command: docker service logs --tail 500 zabbix_app_server1
+      register: initial_server_logs
+      retries: 90
+      delay: 5
+      until: "'node started in \"active\" mode' in initial_server_logs.stdout"
+      changed_when: false
+      when: first_server.rc != 0 and not ansible_check_mode
+
+    - name: Start the standby servers after initial database bootstrap
+      ansible.builtin.command:
+        argv: [docker, service, scale, zabbix_app_server2=1, zabbix_app_server3=1]
+      when: first_server.rc != 0 and not ansible_check_mode

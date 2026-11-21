@@ -1,0 +1,59 @@
+---
+- name: Validate image configuration
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - vars/images.yml
+  tasks:
+    - name: Require a pinned version for every image
+      ansible.builtin.assert:
+        that:
+          - item.value | length > 0
+          - item.value is match('^.+:[^/:]+$')
+          - not (item.value is match('.*:latest$'))
+        fail_msg: "Define {{ item.key }} with an explicit image tag in .env and export it before running Ansible."
+      loop:
+        - { key: ETCD_IMAGE, value: "{{ etcd_image }}" }
+        - { key: PATRONI_IMAGE, value: "{{ patroni_image }}" }
+        - { key: HAPROXY_IMAGE, value: "{{ haproxy_image }}" }
+        - { key: PGBOUNCER_IMAGE, value: "{{ pgbouncer_image }}" }
+        - { key: CLICKHOUSE_SERVER_IMAGE, value: "{{ clickhouse_server_image }}" }
+        - { key: CLICKHOUSE_KEEPER_IMAGE, value: "{{ clickhouse_keeper_image }}" }
+        - { key: ZABBIX_SERVER_IMAGE, value: "{{ zabbix_server_image }}" }
+        - { key: ZABBIX_WEB_IMAGE, value: "{{ zabbix_web_image }}" }
+        - { key: ZABBIX_WEBSERVICE_IMAGE, value: "{{ zabbix_webservice_image }}" }
+        - { key: ZABBIX_PROXY_IMAGE, value: "{{ zabbix_proxy_image }}" }
+        - { key: SELENIUM_IMAGE, value: "{{ selenium_image }}" }
+        - { key: TRAEFIK_IMAGE, value: "{{ traefik_image }}" }
+        - { key: POSTGRES_EXPORTER_IMAGE, value: "{{ postgres_exporter_image }}" }
+        - { key: PGBOUNCER_EXPORTER_IMAGE, value: "{{ pgbouncer_exporter_image }}" }
+        - { key: PGSCV_IMAGE, value: "{{ pgscv_image }}" }
+        - { key: NODE_EXPORTER_IMAGE, value: "{{ node_exporter_image }}" }
+        - { key: PROCESS_EXPORTER_IMAGE, value: "{{ process_exporter_image }}" }
+        - { key: CADVISOR_IMAGE, value: "{{ cadvisor_image }}" }
+      loop_control:
+        label: "{{ item.key }}"
+
+    - name: Keep all Zabbix components on the same 8.0 patch
+      ansible.builtin.assert:
+        that:
+          - zabbix_server_image is match('.*:.*8\\.0\\.[0-9]+$')
+          - zabbix_web_image.split(':')[-1] == zabbix_server_image.split(':')[-1]
+          - zabbix_webservice_image.split(':')[-1] == zabbix_server_image.split(':')[-1]
+          - zabbix_proxy_image.split(':')[-1] == zabbix_server_image.split(':')[-1]
+          - patroni_image.endswith('-zabbix' + zabbix_server_image.split(':')[-1].split('-')[-1])
+        fail_msg: The server, frontend, web service and proxy must use the same pinned Zabbix 8.0 image tag.
+
+    - name: Require the configured ECR repository for Patroni
+      ansible.builtin.assert:
+        that:
+          - lookup('env', 'ECR_REGISTRY') is match('^[0-9]{12}\\.dkr\\.ecr\\.us-east-1\\.amazonaws\\.com$')
+          - lookup('env', 'ECR_REPOSITORY') | length > 0
+          - patroni_image.startswith(lookup('env', 'ECR_REGISTRY') + '/' + lookup('env', 'ECR_REPOSITORY') + ':')
+        fail_msg: Set PATRONI_IMAGE to the configured private ECR repository in us-east-1.
+
+    - name: Require the database name supported by the bootstrap jobs
+      ansible.builtin.assert:
+        that: lookup('env', 'POSTGRES_DB') | default('zabbix', true) == 'zabbix'
+        fail_msg: The current bootstrap supports POSTGRES_DB=zabbix only.

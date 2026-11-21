@@ -1,0 +1,79 @@
+---
+- name: Bootstrap the Zabbix PostgreSQL role and database
+  hosts: swarm_manager_primary
+  become: true
+  gather_facts: false
+  vars_files:
+    - vars/images.yml
+  vars:
+    bootstrap_contents: "{{ lookup('file', playbook_dir + '/files/bootstrap-postgres.sh') }}"
+    bootstrap_config_name: "zbx_pg_bootstrap_{{ (bootstrap_contents | hash('sha256'))[:12] }}"
+  tasks:
+    - name: Create bootstrap script config
+      ansible.builtin.include_tasks: tasks/docker-config.yml
+      vars:
+        config_item:
+          name: "{{ bootstrap_config_name }}"
+          content: "{{ bootstrap_contents }}"
+      when: not ansible_check_mode
+
+    - name: Refuse to overwrite a running or abandoned bootstrap job
+      ansible.builtin.command: docker service inspect zabbix-pg-bootstrap
+      register: existing_bootstrap
+      failed_when: false
+      changed_when: false
+      check_mode: false
+    - name: Require a clean bootstrap job name
+      ansible.builtin.assert:
+        that: existing_bootstrap.rc != 0
+        fail_msg: Inspect and remove the existing zabbix-pg-bootstrap service before retrying.
+
+    - name: Execute PostgreSQL initialization job
+      when: not ansible_check_mode
+      block:
+        - name: Log in to ECR for the bootstrap service
+          ansible.builtin.include_tasks: tasks/ecr-login.yml
+        - name: Start bootstrap service
+          ansible.builtin.command:
+            argv:
+              - docker
+              - service
+              - create
+              - --with-registry-auth
+              - --detach=true
+              - --name=zabbix-pg-bootstrap
+              - --restart-condition=none
+              - --network=zabbix_backend
+              - --constraint=node.role==worker
+              - --secret=patroni_superuser_password
+              - --secret=zabbix_db_user
+              - --secret=zabbix_db_password
+              - --secret=metrics_pg_password
+              - "--config=source={{ bootstrap_config_name }},target=/tmp/bootstrap-postgres.sh,mode=0444"
+              - --entrypoint=/bin/sh
+              - "{{ patroni_image }}"
+              - /tmp/bootstrap-postgres.sh
+          environment:
+            DOCKER_CONFIG: "{{ ecr_auth_directory.path }}"
+
+        - name: Wait for bootstrap to complete
+          ansible.builtin.command: docker service ps --no-trunc --format {% raw %}{{.CurrentState}}|{{.Error}}{% endraw %} zabbix-pg-bootstrap
+          register: pg_bootstrap_status
+          changed_when: false
+          retries: 100
+          delay: 3
+          until: "'Complete' in pg_bootstrap_status.stdout or 'Failed' in pg_bootstrap_status.stdout or 'Rejected' in pg_bootstrap_status.stdout"
+
+        - name: Require successful bootstrap
+          ansible.builtin.assert:
+            that: "'Complete' in pg_bootstrap_status.stdout"
+            fail_msg: "PostgreSQL bootstrap failed; inspect docker service logs zabbix-pg-bootstrap."
+      always:
+        - name: Remove temporary registry credentials
+          ansible.builtin.file:
+            path: "{{ ecr_auth_directory.path }}"
+            state: absent
+          when: ecr_auth_directory.path is defined
+        - name: Remove completed bootstrap service
+          ansible.builtin.command: docker service rm zabbix-pg-bootstrap
+          when: pg_bootstrap_status is defined and 'Complete' in (pg_bootstrap_status.stdout | default(''))

@@ -1,0 +1,14 @@
+---
+- name: Check whether immutable Docker config already exists
+  ansible.builtin.command:
+    argv: [docker, config, inspect, "{{ config_item.name }}"]
+  register: config_inspect
+  failed_when: false
+  changed_when: false
+
+- name: Create content-addressed Docker config
+  ansible.builtin.command:
+    argv: [docker, config, create, "{{ config_item.name }}", '-']
+    stdin: "{{ config_item.content }}"
+    stdin_add_newline: false
+  when: config_inspect.rc != 0

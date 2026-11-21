@@ -1,0 +1,53 @@
+---
+# Low-resource starting values. All keys from the previous server environment
+# remain represented; override them through ZBX_* environment variables.
+zabbix_server_environment:
+  TZ: "{{ lookup('env', 'TZ') | default('America/Sao_Paulo', true) }}"
+  DB_SERVER_HOST: pgbouncer
+  DB_SERVER_PORT: '5432'
+  POSTGRES_USER_FILE: /run/secrets/zabbix_db_user
+  POSTGRES_PASSWORD_FILE: /run/secrets/zabbix_db_password
+  POSTGRES_DB: "{{ lookup('env', 'POSTGRES_DB') | default('zabbix', true) }}"
+  POSTGRES_USE_IMPLICIT_SEARCH_PATH: 'true'
+  ZBX_WEBSERVICEURL: "{{ lookup('env', 'ZBX_WEBSERVICEURL') | default('http://webservice:10053/report', true) }}"
+  ZBX_WEBDRIVERURL: "{{ lookup('env', 'ZBX_WEBDRIVERURL') | default('http://selenium:4444', true) }}"
+  ZBX_STARTREPORTWRITERS: "{{ lookup('env', 'ZBX_STARTREPORTWRITERS') | default('1', true) }}"
+  ZBX_CACHESIZE: "{{ lookup('env', 'ZBX_CACHESIZE') | default('128M', true) }}"
+  ZBX_HISTORYCACHESIZE: "{{ lookup('env', 'ZBX_HISTORYCACHESIZE') | default('64M', true) }}"
+  ZBX_STARTPOLLERS: "{{ lookup('env', 'ZBX_STARTPOLLERS') | default('5', true) }}"
+  ZBX_STARTIPMIPOLLERS: "{{ lookup('env', 'ZBX_STARTIPMIPOLLERS') | default('0', true) }}"
+  ZBX_STARTPREPROCESSORS: "{{ lookup('env', 'ZBX_STARTPREPROCESSORS') | default('3', true) }}"
+  ZBX_STARTPOLLERSUNREACHABLE: "{{ lookup('env', 'ZBX_STARTPOLLERSUNREACHABLE') | default('1', true) }}"
+  ZBX_STARTHISTORYPOLLERS: "{{ lookup('env', 'ZBX_STARTHISTORYPOLLERS') | default('5', true) }}"
+  ZBX_STARTTRAPPERS: "{{ lookup('env', 'ZBX_STARTTRAPPERS') | default('5', true) }}"
+  ZBX_STARTHTTPPOLLERS: "{{ lookup('env', 'ZBX_STARTHTTPPOLLERS') | default('2', true) }}"
+  ZBX_STARTESCALATORS: "{{ lookup('env', 'ZBX_STARTESCALATORS') | default('1', true) }}"
+  ZBX_STARTVMWARECOLLECTORS: "{{ lookup('env', 'ZBX_STARTVMWARECOLLECTORS') | default('0', true) }}"
+  ZBX_VMWAREFREQUENCY: "{{ lookup('env', 'ZBX_VMWAREFREQUENCY') | default('60', true) }}"
+  ZBX_VMWAREPERFFREQUENCY: "{{ lookup('env', 'ZBX_VMWAREPERFFREQUENCY') | default('60', true) }}"
+  ZBX_VMWARECACHESIZE: "{{ lookup('env', 'ZBX_VMWARECACHESIZE') | default('16M', true) }}"
+  ZBX_VMWARETIMEOUT: "{{ lookup('env', 'ZBX_VMWARETIMEOUT') | default('60', true) }}"
+  ZBX_STARTDBSYNCERS: "{{ lookup('env', 'ZBX_STARTDBSYNCERS') | default('4', true) }}"
+  ZBX_HISTORYINDEXCACHESIZE: "{{ lookup('env', 'ZBX_HISTORYINDEXCACHESIZE') | default('32M', true) }}"
+  ZBX_HISTORYSTORAGEDATEINDEX: "{{ lookup('env', 'ZBX_HISTORYSTORAGEDATEINDEX') | default('0', true) }}"
+  ZBX_TRENDCACHESIZE: "{{ lookup('env', 'ZBX_TRENDCACHESIZE') | default('32M', true) }}"
+  ZBX_VALUECACHESIZE: "{{ lookup('env', 'ZBX_VALUECACHESIZE') | default('64M', true) }}"
+  ZBX_STARTLLDPROCESSORS: "{{ lookup('env', 'ZBX_STARTLLDPROCESSORS') | default('2', true) }}"
+  ZBX_STARTPINGERS: "{{ lookup('env', 'ZBX_STARTPINGERS') | default('1', true) }}"
+  ZBX_TIMEOUT: "{{ lookup('env', 'ZBX_TIMEOUT') | default('20', true) }}"
+  ZBX_STARTPROXYPOLLERS: "{{ lookup('env', 'ZBX_STARTPROXYPOLLERS') | default('1', true) }}"
+  ZBX_LISTENPORT: '10051'
+  ZBX_DEBUGLEVEL: "{{ lookup('env', 'ZBX_DEBUGLEVEL') | default('2', true) }}"
+  ZBX_HOUSEKEEPINGFREQUENCY: "{{ lookup('env', 'ZBX_HOUSEKEEPINGFREQUENCY') | default('1', true) }}"
+  ZBX_MAXHOUSEKEEPERDELETE: "{{ lookup('env', 'ZBX_MAXHOUSEKEEPERDELETE') | default('5000', true) }}"
+  ZBX_ENABLE_SNMP_TRAPS: "{{ lookup('env', 'ZBX_ENABLE_SNMP_TRAPS') | default('true', true) }}"
+  ZBX_STARTALERTERS: "{{ lookup('env', 'ZBX_STARTALERTERS') | default('3', true) }}"
+  ZBX_STARTDISCOVERERS: "{{ lookup('env', 'ZBX_STARTDISCOVERERS') | default('1', true) }}"
+  ZBX_STARTBROWSERPOLLERS: "{{ lookup('env', 'ZBX_STARTBROWSERPOLLERS') | default('1', true) }}"
+  ZBX_STARTSNMPPOLLERS: "{{ lookup('env', 'ZBX_STARTSNMPPOLLERS') | default('1', true) }}"
+  ZBX_STARTODBCPOLLERS: "{{ lookup('env', 'ZBX_STARTODBCPOLLERS') | default('1', true) }}"
+  ZBX_TLSCAFILE: /run/secrets/zabbix_ca
+  ZBX_TLSCERTFILE: /run/secrets/zabbix_server_cert
+  ZBX_TLSKEYFILE: /run/secrets/zabbix_server_key
+  ZBX_TLSACCEPT: "{{ lookup('env', 'ZBX_TLSACCEPT') | default('cert', true) }}"
+  ZBX_STARTTELEMETRYQUERYPOLLERS: "{{ lookup('env', 'ZBX_STARTTELEMETRYQUERYPOLLERS') | default('1', true) }}"

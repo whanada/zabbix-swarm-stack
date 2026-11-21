@@ -1,0 +1,26 @@
+<clickhouse>
+  <listen_host>0.0.0.0</listen_host>
+  <remote_servers>
+    <zabbix_cluster>
+      <shard>
+        <internal_replication>true</internal_replication>
+{% for n in range(1, 4) %}
+        <replica><host>clickhouse{{ n }}</host><port>9000</port></replica>
+{% endfor %}
+      </shard>
+    </zabbix_cluster>
+  </remote_servers>
+  <zookeeper>
+{% for n in range(1, 4) %}
+    <node><host>keeper{{ n }}</host><port>9181</port></node>
+{% endfor %}
+  </zookeeper>
+  <macros><shard>01</shard><replica>clickhouse{{ clickhouse_node }}</replica></macros>
+  <prometheus>
+    <endpoint>/metrics</endpoint>
+    <port>9363</port>
+    <metrics>true</metrics>
+    <events>true</events>
+    <asynchronous_metrics>true</asynchronous_metrics>
+  </prometheus>
+</clickhouse>

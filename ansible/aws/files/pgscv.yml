@@ -1,0 +1,39 @@
+# Keep cardinality and memory bounded on small workers.
+collect_top_query: 50
+collectors:
+  postgres/custom:
+    subsystems:
+      timescale_hypertable:
+        query: >-
+          SELECT h.hypertable_schema::text AS schema_name,
+                 h.hypertable_name::text AS table_name,
+                 h.num_chunks::float8 AS chunk_count,
+                 COALESCE(d.table_bytes, 0)::float8 AS data_bytes,
+                 COALESCE(d.index_bytes, 0)::float8 AS index_bytes,
+                 COALESCE(d.toast_bytes, 0)::float8 AS toast_bytes,
+                 COALESCE(d.total_bytes, 0)::float8 AS total_bytes,
+                 COALESCE(c.number_compressed_chunks, 0)::float8 AS compressed_chunks,
+                 COALESCE(c.before_compression_total_bytes, 0)::float8 AS bytes_before_compression,
+                 COALESCE(c.after_compression_total_bytes, 0)::float8 AS bytes_after_compression
+          FROM timescaledb_information.hypertables AS h
+          CROSS JOIN LATERAL hypertable_detailed_size(format('%I.%I', h.hypertable_schema, h.hypertable_name)::regclass) AS d
+          LEFT JOIN LATERAL hypertable_compression_stats(format('%I.%I', h.hypertable_schema, h.hypertable_name)::regclass) AS c ON true
+        metrics:
+          - {name: chunks, usage: GAUGE, labels: [schema_name, table_name], value: chunk_count, description: 'Chunks per hypertable.'}
+          - {name: data_bytes, usage: GAUGE, labels: [schema_name, table_name], value: data_bytes, description: 'Hypertable data bytes.'}
+          - {name: index_bytes, usage: GAUGE, labels: [schema_name, table_name], value: index_bytes, description: 'Hypertable index bytes.'}
+          - {name: toast_bytes, usage: GAUGE, labels: [schema_name, table_name], value: toast_bytes, description: 'Hypertable TOAST bytes.'}
+          - {name: total_bytes, usage: GAUGE, labels: [schema_name, table_name], value: total_bytes, description: 'Hypertable total bytes.'}
+          - {name: compressed_chunks, usage: GAUGE, labels: [schema_name, table_name], value: compressed_chunks, description: 'Compressed chunks.'}
+          - {name: bytes_before_compression, usage: GAUGE, labels: [schema_name, table_name], value: bytes_before_compression, description: 'Bytes before compression.'}
+          - {name: bytes_after_compression, usage: GAUGE, labels: [schema_name, table_name], value: bytes_after_compression, description: 'Bytes after compression.'}
+      timescale_jobs:
+        query: >-
+          SELECT j.job_id::text AS job_id, j.proc_name::text AS procedure_name,
+                 COALESCE(s.total_runs, 0)::float8 AS runs,
+                 COALESCE(s.total_failures, 0)::float8 AS failures
+          FROM timescaledb_information.jobs j
+          LEFT JOIN timescaledb_information.job_stats s USING (job_id)
+        metrics:
+          - {name: runs_total, usage: COUNTER, labels: [job_id, procedure_name], value: runs, description: 'TimescaleDB job executions.'}
+          - {name: failures_total, usage: COUNTER, labels: [job_id, procedure_name], value: failures, description: 'Failed TimescaleDB job executions.'}

@@ -1,0 +1,51 @@
+---
+- name: Deploy ClickHouse and Keeper
+  hosts: swarm_manager_primary
+  become: true
+  gather_facts: false
+  vars_files:
+    - vars/images.yml
+  vars:
+    clickhouse_haproxy_contents: "{{ lookup('file', playbook_dir + '/files/clickhouse-haproxy.cfg') }}"
+    clickhouse_haproxy_config_name: "zbx_ch_haproxy_{{ (clickhouse_haproxy_contents | hash('sha256'))[:12] }}"
+  tasks:
+    - name: Require ClickHouse Swarm secret
+      ansible.builtin.command: docker secret inspect clickhouse_zabbix_password
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Initialize node config maps
+      ansible.builtin.set_fact:
+        keeper_config_names: {}
+        clickhouse_config_names: {}
+
+    - name: Prepare per-node configurations
+      ansible.builtin.include_tasks: tasks/clickhouse-config.yml
+      loop: [1, 2, 3]
+      loop_control:
+        loop_var: clickhouse_node
+      when: not ansible_check_mode
+
+    - name: Create ClickHouse HAProxy configuration
+      ansible.builtin.include_tasks: tasks/docker-config.yml
+      vars:
+        config_item:
+          name: "{{ clickhouse_haproxy_config_name }}"
+          content: "{{ clickhouse_haproxy_contents }}"
+      when: not ansible_check_mode
+
+    - name: Render the ClickHouse stack
+      ansible.builtin.template:
+        src: templates/clickhouse-stack.yml.j2
+        dest: /tmp/zabbix-clickhouse-stack.yml
+        mode: '0600'
+      when: not ansible_check_mode
+
+    - name: Validate the ClickHouse stack
+      ansible.builtin.command: docker stack config -c /tmp/zabbix-clickhouse-stack.yml
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Deploy ClickHouse and Keeper services
+      ansible.builtin.command: docker stack deploy --with-registry-auth -c /tmp/zabbix-clickhouse-stack.yml zabbix_clickhouse
+      when: not ansible_check_mode

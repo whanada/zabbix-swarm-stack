@@ -3,3 +3,13 @@
 .replication/
 certs/
 
+.secrets-temp.txt
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.auto.tfvars
+/ansible/collections/
+
+__pycache__/
+*.py[cod]

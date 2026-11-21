@@ -1,0 +1,60 @@
+version: '3.8'
+services:
+{% for n in range(1, 4) %}
+  keeper{{ n }}:
+    image: {{ clickhouse_keeper_image }}
+    volumes: ['/var/lib/zabbix-ha/keeper:/var/lib/clickhouse']
+    configs:
+      - source: keeper{{ n }}
+        target: /etc/clickhouse-keeper/keeper_config.xml
+    networks: [backend]
+    deploy:
+      placement:
+        constraints: ['node.labels.zabbix.slot == {{ n }}']
+
+  clickhouse{{ n }}:
+    image: {{ clickhouse_server_image }}
+    environment:
+      CLICKHOUSE_USER: zabbix
+      CLICKHOUSE_PASSWORD_FILE: /run/secrets/clickhouse_zabbix_password
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: '1'
+    secrets: [clickhouse_zabbix_password]
+    volumes: ['/var/lib/zabbix-ha/clickhouse:/var/lib/clickhouse']
+    configs:
+      - source: clickhouse{{ n }}
+        target: /etc/clickhouse-server/config.d/zabbix-cluster.xml
+    networks: [backend]
+    deploy:
+      placement:
+        constraints: ['node.labels.zabbix.slot == {{ n }}']
+{% endfor %}
+  clickhouse-router:
+    image: {{ haproxy_image }}
+    configs:
+      - source: clickhouse_haproxy
+        target: /usr/local/etc/haproxy/haproxy.cfg
+    networks: [backend]
+    deploy:
+      replicas: 2
+      placement:
+        constraints: ['node.role == worker']
+        max_replicas_per_node: 1
+networks:
+  backend:
+    external: true
+    name: zabbix_backend
+configs:
+{% for n in range(1, 4) %}
+  keeper{{ n }}:
+    external: true
+    name: {{ keeper_config_names[n | string] }}
+  clickhouse{{ n }}:
+    external: true
+    name: {{ clickhouse_config_names[n | string] }}
+{% endfor %}
+  clickhouse_haproxy:
+    external: true
+    name: {{ clickhouse_haproxy_config_name }}
+secrets:
+  clickhouse_zabbix_password:
+    external: true

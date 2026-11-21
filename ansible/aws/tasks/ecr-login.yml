@@ -1,0 +1,26 @@
+---
+- name: Create temporary registry authentication directory on manager
+  ansible.builtin.tempfile:
+    state: directory
+    prefix: zabbix-ecr-
+    path: "{{ ecr_auth_temp_path | default('/run') }}"
+  register: ecr_auth_directory
+  no_log: true
+
+- name: Obtain short-lived ECR login password on controller
+  ansible.builtin.command:
+    argv: [aws, ecr, get-login-password, --region, "{{ lookup('env', 'AWS_REGION') | default('us-east-1', true) }}"]
+  delegate_to: localhost
+  become: false
+  register: ecr_login_password
+  changed_when: false
+  no_log: true
+
+- name: Authenticate manager Docker client to ECR
+  ansible.builtin.command:
+    argv: [docker, login, --username, AWS, --password-stdin, "{{ lookup('env', 'ECR_REGISTRY') }}"]
+    stdin: "{{ ecr_login_password.stdout }}"
+    stdin_add_newline: false
+  environment:
+    DOCKER_CONFIG: "{{ ecr_auth_directory.path }}"
+  no_log: true

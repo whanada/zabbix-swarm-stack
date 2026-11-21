@@ -1,0 +1,159 @@
+---
+- name: Build and test the Patroni TimescaleDB image
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    timescale_base: "{{ lookup('env', 'TIMESCALE_BASE') | default('timescale/timescaledb:2.29.0-pg17', true) }}"
+    patroni_version: "{{ lookup('env', 'PATRONI_VERSION') | default('4.1.5', true) }}"
+    zabbix_version: "{{ lookup('env', 'ZABBIX_VERSION') | default('8.0.0', true) }}"
+    image_revision: "{{ lookup('env', 'IMAGE_REVISION') | default('r2', true) }}"
+    image_name: "patroni-timescaledb-ha:{{ timescale_base.split(':')[1] }}-patroni{{ patroni_version }}-{{ image_revision }}-zabbix{{ zabbix_version }}"
+    image_push: false
+    ecr_registry: "{{ lookup('env', 'ECR_REGISTRY') }}"
+    ecr_repository: "{{ lookup('env', 'ECR_REPOSITORY') }}"
+    ecr_region: "{{ lookup('env', 'AWS_REGION') | default('us-east-1', true) }}"
+    image_context: "{{ playbook_dir }}/../images/patroni-timescaledb"
+  tasks:
+    - name: Check explicitly versioned inputs
+      ansible.builtin.assert:
+        that:
+          - timescale_base is match('^timescale/timescaledb:[0-9]+\\.[0-9]+\\.[0-9]+-pg(15|16|17|18)$')
+          - patroni_version is match('^[0-9]+\\.[0-9]+\\.[0-9]+$')
+          - image_revision is match('^r[0-9]+$')
+          - image_name is match('^[a-z0-9][a-z0-9._/-]*:[a-zA-Z0-9][a-zA-Z0-9_.-]*$')
+          - not (image_name is match('.*:latest$'))
+        fail_msg: Use explicitly pinned TimescaleDB, Patroni, and output image versions.
+
+    - name: Require the configured ECR repository before pushing
+      ansible.builtin.assert:
+        that:
+          - ecr_registry is match('^[0-9]{12}\\.dkr\\.ecr\\.us-east-1\\.amazonaws\\.com$')
+          - ecr_repository | length > 0
+          - ecr_region == 'us-east-1'
+          - image_name.startswith(ecr_registry + '/' + ecr_repository + ':')
+        fail_msg: Export ECR_REGISTRY, ECR_REPOSITORY, AWS_REGION and PATRONI_IMAGE from .env.
+      when: image_push | bool
+
+    - name: Verify ECR repository and access before building
+      ansible.builtin.command:
+        argv: [aws, ecr, describe-repositories, --region, "{{ ecr_region }}", --repository-names, "{{ ecr_repository }}", --query, 'repositories[0].repositoryUri', --output, text]
+      register: ecr_repository_info
+      changed_when: false
+      check_mode: false
+      when: image_push | bool
+
+    - name: Refuse a repository or account mismatch
+      ansible.builtin.assert:
+        that: ecr_repository_info.stdout == ecr_registry + '/' + ecr_repository
+      when: image_push | bool
+
+    - name: Check whether the target ECR tag already exists
+      ansible.builtin.command:
+        argv: [aws, ecr, describe-images, --region, "{{ ecr_region }}", --repository-name, "{{ ecr_repository }}", --image-ids, "imageTag={{ image_name.split(':')[-1] }}"]
+      register: ecr_existing_image
+      changed_when: false
+      failed_when: ecr_existing_image.rc != 0 and 'ImageNotFoundException' not in ecr_existing_image.stderr
+      check_mode: false
+      when: image_push | bool
+
+    - name: Prevent overwriting an existing mutable ECR tag
+      ansible.builtin.assert:
+        that: ecr_existing_image.rc != 0
+        fail_msg: This ECR tag already exists; choose a new versioned tag instead of overwriting it.
+      when: image_push | bool
+
+    - name: Require a supported Zabbix and TimescaleDB combination
+      ansible.builtin.assert:
+        that:
+          - zabbix_version is match('^8\\.0\\.[0-9]+$')
+          - timescale_base.split(':')[1].split('-')[0] is version('2.20.0', '>=')
+          - timescale_base.split(':')[1].split('-')[0] is version('2.30.0' if zabbix_version is version('8.0.1', '<') else '2.32.0', '<')
+        fail_msg: Zabbix 8.0.0 supports TimescaleDB 2.20–2.29; 8.0.1 and later supports 2.20–2.31. Verify the official matrix before changing these bounds.
+
+    - name: Check Docker access
+      ansible.builtin.command: docker info
+      changed_when: false
+      check_mode: false
+
+    - name: Report planned image build
+      ansible.builtin.debug:
+        msg: "Would build {{ image_name }} from {{ timescale_base }}, test it, and {{ 'push it' if image_push | bool else 'keep it locally' }}."
+      when: ansible_check_mode
+
+    - name: Build, test and optionally publish the image
+      block:
+        - name: Create temporary Docker authentication directory
+          ansible.builtin.tempfile:
+            state: directory
+            prefix: zabbix-docker-auth-
+          register: docker_auth_dir
+          when: image_push | bool and not ansible_check_mode
+
+        - name: Get a short-lived ECR password
+          ansible.builtin.command:
+            argv: [aws, ecr, get-login-password, --region, "{{ ecr_region }}"]
+          register: ecr_password
+          changed_when: false
+          no_log: true
+          when: image_push | bool and not ansible_check_mode
+
+        - name: Authenticate to the private ECR registry
+          ansible.builtin.command:
+            argv: [docker, login, --username, AWS, --password-stdin, "{{ ecr_registry }}"]
+            stdin: "{{ ecr_password.stdout }}"
+            stdin_add_newline: false
+          environment:
+            DOCKER_CONFIG: "{{ docker_auth_dir.path }}"
+          no_log: true
+          when: image_push | bool and not ansible_check_mode
+
+        - name: Build image
+          ansible.builtin.command:
+            argv:
+              - docker
+              - build
+              - --pull
+              - --build-arg
+              - "TIMESCALE_BASE={{ timescale_base }}"
+              - --build-arg
+              - "PATRONI_VERSION={{ patroni_version }}"
+              - --build-arg
+              - "ZABBIX_SCHEMA_IMAGE=zabbix/zabbix-server-pgsql:ubuntu-{{ zabbix_version }}"
+              - --tag
+              - "{{ image_name }}"
+              - "{{ image_context }}"
+          environment:
+            DOCKER_CONFIG: "{{ docker_auth_dir.path if image_push | bool else (lookup('env', 'DOCKER_CONFIG') | default(lookup('env', 'HOME') + '/.docker', true)) }}"
+          when: not ansible_check_mode
+
+        - name: Smoke test Patroni, PostgreSQL and TimescaleDB
+          ansible.builtin.command:
+            argv:
+              - docker
+              - run
+              - --rm
+              - --network
+              - none
+              - --entrypoint
+              - /bin/sh
+              - --mount
+              - "type=bind,src={{ image_context }}/smoke-test.sh,dst=/tmp/smoke-test.sh,readonly"
+              - "{{ image_name }}"
+              - /tmp/smoke-test.sh
+          changed_when: false
+          when: not ansible_check_mode
+
+        - name: Push only after the smoke test passes
+          ansible.builtin.command:
+            argv: [docker, push, "{{ image_name }}"]
+          environment:
+            DOCKER_CONFIG: "{{ docker_auth_dir.path }}"
+          when: image_push | bool and not ansible_check_mode
+
+      always:
+        - name: Remove temporary Docker authentication directory
+          ansible.builtin.file:
+            path: "{{ docker_auth_dir.path }}"
+            state: absent
+          when: docker_auth_dir.path is defined

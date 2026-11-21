@@ -1,0 +1,73 @@
+---
+# Invoke on a Swarm manager; pass traefik_overlay_networks as an Ansible list.
+# Example: -e '{"traefik_overlay_networks":["monitoring_edge"]}'
+- name: Create and verify encrypted Traefik overlay networks
+  hosts: swarm_manager_primary
+  gather_facts: false
+  vars:
+    traefik_overlay_networks: []
+  tasks:
+    - name: Require explicitly named overlay networks
+      ansible.builtin.assert:
+        that:
+          - traefik_overlay_networks is sequence
+          - traefik_overlay_networks is not string
+          - traefik_overlay_networks | length > 0
+          - traefik_overlay_networks | unique | length == traefik_overlay_networks | length
+        fail_msg: Set traefik_overlay_networks to a nonempty list of unique network names.
+
+    - name: Inspect existing networks
+      ansible.builtin.command:
+        argv: [docker, network, inspect, "{{ item }}"]
+      loop: "{{ traefik_overlay_networks }}"
+      register: initial_networks
+      failed_when: false
+      changed_when: false
+      check_mode: false
+
+    - name: Reject existing networks that are not encrypted Swarm overlays
+      ansible.builtin.assert:
+        that:
+          - (item.stdout | from_json | first).Driver == 'overlay'
+          - (item.stdout | from_json | first).Scope == 'swarm'
+          - "'encrypted' in ((item.stdout | from_json | first).Options | default({}, true))"
+        fail_msg: "Network {{ item.item }} exists but is not an encrypted Swarm overlay. Replace it deliberately before continuing."
+      loop: "{{ initial_networks.results }}"
+      when: item.rc == 0
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Create missing networks with overlay encryption
+      ansible.builtin.command:
+        argv: [docker, network, create, --driver, overlay, --opt, encrypted, "{{ item.item }}"]
+      loop: "{{ initial_networks.results }}"
+      when: item.rc != 0 and not ansible_check_mode
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Report networks that would be created in check mode
+      ansible.builtin.debug:
+        msg: "Would create encrypted overlay network {{ item.item }}"
+      loop: "{{ initial_networks.results }}"
+      when: item.rc != 0 and ansible_check_mode
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Reinspect all networks after creation
+      ansible.builtin.command:
+        argv: [docker, network, inspect, "{{ item }}"]
+      loop: "{{ traefik_overlay_networks }}"
+      register: final_networks
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Verify encryption after creation
+      ansible.builtin.assert:
+        that:
+          - (item.stdout | from_json | first).Driver == 'overlay'
+          - (item.stdout | from_json | first).Scope == 'swarm'
+          - "'encrypted' in ((item.stdout | from_json | first).Options | default({}, true))"
+      loop: "{{ final_networks.results | default([]) }}"
+      when: not ansible_check_mode
+      loop_control:
+        label: "{{ item.item }}"

@@ -1,0 +1,142 @@
+---
+- name: Prepare EC2 nodes for Swarm
+  hosts: swarm_nodes
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Validate topology before making changes
+      ansible.builtin.assert:
+        that:
+          - groups['swarm_manager_primary'] | default([]) | length == 1
+          - groups['swarm_manager_secondary'] | default([]) | length == 2
+          - groups['swarm_workers'] | default([]) | length == 3
+          - swarm_private_ip | length > 0
+          - swarm_node_name | length > 0
+          - ansible_aws_ssm_bucket_name | length > 0
+        fail_msg: Expected exactly 3 managers and 3 workers with EC2 tags and an SSM transfer bucket.
+    - name: Set a stable hostname from the EC2 Name tag
+      ansible.builtin.hostname:
+        name: "{{ swarm_node_name }}"
+    - name: Install Docker Engine and required host tools
+      ansible.builtin.apt:
+        name: [docker.io, python3, curl, xfsprogs]
+        state: present
+        update_cache: true
+    - name: Enable Docker
+      ansible.builtin.service:
+        name: docker
+        enabled: true
+        state: started
+
+- name: Initialize Swarm and encrypted ingress
+  hosts: swarm_manager_primary
+  become: true
+  gather_facts: false
+  vars:
+    swarm_ingress_subnet: "{{ lookup('env', 'SWARM_INGRESS_SUBNET') | default('10.240.0.0/24', true) }}"
+  tasks:
+    - name: Read local Swarm state
+      ansible.builtin.command: docker info --format {% raw %}{{.Swarm.LocalNodeState}}{% endraw %}
+      register: local_swarm
+      changed_when: false
+      check_mode: false
+    - name: Initialize manager with its private address
+      ansible.builtin.command:
+        argv: [docker, swarm, init, --advertise-addr, "{{ swarm_private_ip }}"]
+      when: local_swarm.stdout == 'inactive' and not ansible_check_mode
+    - name: Check ingress network options
+      ansible.builtin.command: docker network inspect ingress
+      register: ingress_network
+      changed_when: false
+      check_mode: false
+      when: not ansible_check_mode
+    - name: List services before changing ingress
+      ansible.builtin.command: docker service ls --quiet
+      register: existing_services
+      changed_when: false
+      when:
+        - not ansible_check_mode
+        - "'encrypted' not in ((ingress_network.stdout | from_json | first).Options | default({}, true))"
+    - name: Refuse to replace ingress on an existing deployment
+      ansible.builtin.assert:
+        that: existing_services.stdout | trim | length == 0
+        fail_msg: Existing Swarm ingress is not encrypted and services exist; migrate ingress deliberately.
+      when: existing_services is not skipped
+    - name: Remove default unencrypted ingress
+      ansible.builtin.command: docker network rm ingress
+      when: existing_services is not skipped
+    - name: Create encrypted ingress network
+      ansible.builtin.command:
+        argv: [docker, network, create, --driver, overlay, --ingress, --opt, encrypted, --subnet, "{{ swarm_ingress_subnet }}", ingress]
+      when: existing_services is not skipped
+    - name: Read manager join token
+      ansible.builtin.command: docker swarm join-token -q manager
+      register: manager_join_token
+      no_log: true
+      changed_when: false
+      when: not ansible_check_mode
+    - name: Read worker join token
+      ansible.builtin.command: docker swarm join-token -q worker
+      register: worker_join_token
+      no_log: true
+      changed_when: false
+      when: not ansible_check_mode
+
+- name: Join remaining managers and workers
+  hosts: swarm_manager_secondary:swarm_workers
+  become: true
+  gather_facts: false
+  vars:
+    primary: "{{ groups['swarm_manager_primary'] | first }}"
+  tasks:
+    - name: Read local Swarm state
+      ansible.builtin.command: docker info --format {% raw %}{{.Swarm.LocalNodeState}}{% endraw %}
+      register: local_swarm
+      changed_when: false
+      check_mode: false
+    - name: Join using the node private address
+      ansible.builtin.command:
+        argv:
+          - docker
+          - swarm
+          - join
+          - --advertise-addr
+          - "{{ swarm_private_ip }}"
+          - --token
+          - "{{ hostvars[primary].manager_join_token.stdout if inventory_hostname in groups['swarm_manager_secondary'] else hostvars[primary].worker_join_token.stdout }}"
+          - "{{ hostvars[primary].swarm_private_ip }}:2377"
+      no_log: true
+      when: local_swarm.stdout == 'inactive' and not ansible_check_mode
+    - name: Get local node ID
+      ansible.builtin.command: docker info --format {% raw %}{{.Swarm.NodeID}}{% endraw %}
+      register: local_node_id
+      changed_when: false
+      when: not ansible_check_mode
+    - name: Verify node belongs to this cluster
+      ansible.builtin.command:
+        argv: [docker, node, inspect, "{{ local_node_id.stdout }}"]
+      delegate_to: "{{ primary }}"
+      changed_when: false
+      when: not ansible_check_mode
+
+- name: Assign stable node-specific placement labels
+  hosts: swarm_manager_primary
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Inspect current worker labels
+      ansible.builtin.command:
+        argv: [docker, node, inspect, "{{ hostvars[item].swarm_node_name }}"]
+      loop: "{{ groups['swarm_workers'] }}"
+      register: worker_inspections
+      changed_when: false
+      when: not ansible_check_mode
+    - name: Label workers by stable index
+      ansible.builtin.command:
+        argv: [docker, node, update, --label-add, "{{ 'zabbix.slot=' + hostvars[item.item].tags.NodeIndex }}", "{{ hostvars[item.item].swarm_node_name }}"]
+      loop: "{{ worker_inspections.results | default([]) }}"
+      loop_control:
+        label: "{{ hostvars[item.item].swarm_node_name }}"
+      when:
+        - not ansible_check_mode
+        - ((item.stdout | from_json | first).Spec.Labels | default({}, true)).get('zabbix.slot', '') != hostvars[item.item].tags.NodeIndex

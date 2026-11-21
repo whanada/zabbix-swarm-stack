@@ -1,0 +1,11 @@
+---
+# Run only after Terraform and prepare-swarm.yml have completed.
+- import_playbook: preflight-images.yml
+- import_playbook: bootstrap-aws-secrets.yml
+- import_playbook: create-secrets.yml
+- import_playbook: deploy-data.yml
+- import_playbook: bootstrap-postgres.yml
+- import_playbook: deploy-metrics.yml
+- import_playbook: deploy-clickhouse.yml
+- import_playbook: bootstrap-clickhouse.yml
+- import_playbook: deploy-app.yml

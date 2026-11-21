@@ -1,0 +1,24 @@
+---
+- name: Render node-specific Keeper and ClickHouse configurations
+  ansible.builtin.set_fact:
+    keeper_content: "{{ lookup('template', playbook_dir + '/templates/clickhouse-keeper.xml.j2') }}"
+    clickhouse_content: "{{ lookup('template', playbook_dir + '/templates/clickhouse-server.xml.j2') }}"
+
+- name: Record immutable config names
+  ansible.builtin.set_fact:
+    keeper_config_names: "{{ keeper_config_names | combine({(clickhouse_node | string): ('zbx_keeper_' + (keeper_content | hash('sha256'))[:12])}) }}"
+    clickhouse_config_names: "{{ clickhouse_config_names | combine({(clickhouse_node | string): ('zbx_clickhouse_' + (clickhouse_content | hash('sha256'))[:12])}) }}"
+
+- name: Create Keeper Docker config
+  ansible.builtin.include_tasks: docker-config.yml
+  vars:
+    config_item:
+      name: "{{ keeper_config_names[clickhouse_node | string] }}"
+      content: "{{ keeper_content }}"
+
+- name: Create ClickHouse Docker config
+  ansible.builtin.include_tasks: docker-config.yml
+  vars:
+    config_item:
+      name: "{{ clickhouse_config_names[clickhouse_node | string] }}"
+      content: "{{ clickhouse_content }}"

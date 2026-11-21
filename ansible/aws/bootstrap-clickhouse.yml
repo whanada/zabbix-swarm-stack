@@ -1,0 +1,72 @@
+---
+- name: Bootstrap replicated OpenTelemetry tables
+  hosts: swarm_manager_primary
+  become: true
+  gather_facts: false
+  vars_files:
+    - vars/images.yml
+  vars:
+    bootstrap_contents: "{{ lookup('file', playbook_dir + '/files/bootstrap-clickhouse.sh') }}"
+    bootstrap_config_name: "zbx_ch_bootstrap_{{ (bootstrap_contents | hash('sha256'))[:12] }}"
+  tasks:
+    - name: Create the immutable bootstrap script
+      ansible.builtin.include_tasks: tasks/docker-config.yml
+      vars:
+        config_item:
+          name: "{{ bootstrap_config_name }}"
+          content: "{{ bootstrap_contents }}"
+      when: not ansible_check_mode
+    - name: Check for an existing bootstrap job
+      ansible.builtin.command: docker service inspect zabbix-clickhouse-bootstrap
+      register: existing_bootstrap
+      failed_when: false
+      changed_when: false
+      check_mode: false
+    - name: Require a clean bootstrap job name
+      ansible.builtin.assert:
+        that: existing_bootstrap.rc != 0
+        fail_msg: Inspect and remove the existing zabbix-clickhouse-bootstrap service before retrying.
+    - name: Initialize telemetry schema
+      when: not ansible_check_mode
+      block:
+        - name: Log in to ECR for the bootstrap service
+          ansible.builtin.include_tasks: tasks/ecr-login.yml
+        - name: Run the official Zabbix telemetry schema scripts
+          ansible.builtin.command:
+            argv:
+              - docker
+              - service
+              - create
+              - --with-registry-auth
+              - --detach=true
+              - --name=zabbix-clickhouse-bootstrap
+              - --restart-condition=none
+              - --network=zabbix_backend
+              - --constraint=node.role==worker
+              - --secret=clickhouse_zabbix_password
+              - "--config=source={{ bootstrap_config_name }},target=/tmp/bootstrap-clickhouse.sh,mode=0444"
+              - --entrypoint=/bin/sh
+              - "{{ patroni_image }}"
+              - /tmp/bootstrap-clickhouse.sh
+          environment:
+            DOCKER_CONFIG: "{{ ecr_auth_directory.path }}"
+        - name: Wait for initialization to complete
+          ansible.builtin.command: docker service ps --no-trunc --format {% raw %}{{.CurrentState}}|{{.Error}}{% endraw %} zabbix-clickhouse-bootstrap
+          register: ch_bootstrap_status
+          changed_when: false
+          retries: 100
+          delay: 3
+          until: "'Complete' in ch_bootstrap_status.stdout or 'Failed' in ch_bootstrap_status.stdout or 'Rejected' in ch_bootstrap_status.stdout"
+        - name: Require successful initialization
+          ansible.builtin.assert:
+            that: "'Complete' in ch_bootstrap_status.stdout"
+            fail_msg: Inspect docker service logs zabbix-clickhouse-bootstrap.
+      always:
+        - name: Remove temporary registry credentials
+          ansible.builtin.file:
+            path: "{{ ecr_auth_directory.path }}"
+            state: absent
+          when: ecr_auth_directory.path is defined
+        - name: Remove successful bootstrap service
+          ansible.builtin.command: docker service rm zabbix-clickhouse-bootstrap
+          when: ch_bootstrap_status is defined and 'Complete' in (ch_bootstrap_status.stdout | default(''))

@@ -1,0 +1,133 @@
+version: '3.8'
+services:
+{% for n in range(1, 4) %}
+  postgres-exporter{{ n }}:
+    image: {{ postgres_exporter_image }}
+    environment:
+      DATA_SOURCE_URI: 'zabbix_data_db{{ n }}:5432/zabbix?sslmode=disable'
+      DATA_SOURCE_USER: zbx_monitor
+      DATA_SOURCE_PASS_FILE: /run/secrets/metrics_pg_password
+    secrets: [metrics_pg_password]
+    networks: [backend]
+    deploy:
+      placement:
+        constraints: ['node.labels.zabbix.slot == {{ n }}']
+      resources:
+        limits: {cpus: '0.5', memory: 256M}
+
+  pgscv{{ n }}:
+    image: {{ pgscv_image }}
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        export DATABASE_DSN="host=zabbix_data_db{{ n }} port=5432 dbname=zabbix user=zbx_monitor password='$$(cat /run/secrets/metrics_pg_password)' sslmode=disable application_name=pgscv"
+        exec /bin/pgscv --config-file=/etc/pgscv/pgscv.yml
+    environment:
+      PGSCV_LISTEN_ADDRESS: '0.0.0.0:9890'
+      PGSCV_DISABLE_COLLECTORS: system
+    secrets: [metrics_pg_password]
+    configs:
+      - source: pgscv_config
+        target: /etc/pgscv/pgscv.yml
+    networks: [backend]
+    deploy:
+      placement:
+        constraints: ['node.labels.zabbix.slot == {{ n }}']
+      resources:
+        limits: {cpus: '0.5', memory: 512M}
+{% endfor %}
+{% for n in range(1, 3) %}
+  pgbouncer-exporter{{ n }}:
+    image: {{ pgbouncer_exporter_image }}
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        exec /bin/pgbouncer_exporter --pgBouncer.connectionString="host=zabbix_data_pgbouncer{{ n }} port=5432 dbname=pgbouncer sslmode=disable user=zbx_stats password='$$(cat /run/secrets/metrics_pgbouncer_password)'"
+    secrets: [metrics_pgbouncer_password]
+    networks: [backend]
+    deploy:
+      placement:
+        constraints: ['node.labels.zabbix.slot == {{ n }}']
+      resources:
+        limits: {cpus: '0.25', memory: 128M}
+{% endfor %}
+  node-exporter:
+    image: {{ node_exporter_image }}
+    user: '0:0'
+    command:
+      - --path.rootfs=/host
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --web.listen-address=:9100
+      - --collector.systemd
+      - --collector.systemd.private
+      - '--collector.systemd.unit-include=.+\.service'
+      - --collector.processes
+      - --collector.tcpstat
+      - '--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|etc|var/lib/docker/.+)($$|/)'
+    volumes:
+      - type: bind
+        source: /
+        target: /host
+        read_only: true
+      - {type: bind, source: /run/systemd/private, target: /run/systemd/private, read_only: true}
+    networks: [backend]
+    deploy:
+      mode: global
+      resources:
+        limits: {cpus: '0.25', memory: 128M}
+
+  process-exporter:
+    image: {{ process_exporter_image }}
+    user: '0:0'
+    command: ['-procfs=/host/proc', '-config.path=/etc/process-exporter/config.yml', '-web.listen-address=:9256', '-threads=false']
+    configs:
+      - source: process_exporter_config
+        target: /etc/process-exporter/config.yml
+    volumes:
+      - type: bind
+        source: /proc
+        target: /host/proc
+        read_only: true
+    networks: [backend]
+    deploy:
+      mode: global
+      resources:
+        limits: {cpus: '0.25', memory: 128M}
+
+  cadvisor:
+    image: {{ cadvisor_image }}
+    command:
+      - --docker_only=true
+      - --housekeeping_interval=30s
+      - --max_housekeeping_interval=60s
+      - --enable_metrics=cpu,memory,network,diskIO,disk,pressure
+      - --store_container_labels=false
+      - --whitelisted_container_labels=com.docker.swarm.service.name,com.docker.swarm.task.name,com.docker.stack.namespace
+    volumes:
+      - {type: bind, source: /, target: /rootfs, read_only: true}
+      - {type: bind, source: /var/run, target: /var/run, read_only: true}
+      - {type: bind, source: /sys, target: /sys, read_only: true}
+      - {type: bind, source: /var/lib/docker, target: /var/lib/docker, read_only: true}
+    networks: [backend]
+    deploy:
+      mode: global
+      resources:
+        limits: {cpus: '0.5', memory: 512M}
+
+networks:
+  backend:
+    external: true
+    name: zabbix_backend
+configs:
+  pgscv_config:
+    external: true
+    name: {{ pgscv_config_name }}
+  process_exporter_config:
+    external: true
+    name: {{ process_exporter_config_name }}
+secrets:
+  metrics_pg_password:
+    external: true
+  metrics_pgbouncer_password:
+    external: true

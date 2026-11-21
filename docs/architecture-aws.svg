@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="900" viewBox="0 0 1500 900">
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/></marker></defs>
+<rect width="100%" height="100%" fill="#f4f7fb"/>
+<text x="55" y="60" font-family="DejaVu Sans,sans-serif" font-size="30" font-weight="700" fill="#12253f">AWS infrastructure</text>
+<text x="55" y="91" font-family="DejaVu Sans,sans-serif" font-size="16" fill="#52657d">us-east-1 • six EC2 instances • one shared NAT • static NLB addresses</text>
+<rect x="55" y="130" width="250" height="82" rx="12" fill="#eef5ff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="72" y="157" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="700" fill="#152942">Client</text>
+<text x="72" y="182" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">hosts: zabbix.wildeshanada.com</text>
+<text x="72" y="204" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">HTTPS 443 • Zabbix TCP 10051</text>
+<rect x="400" y="130" width="390" height="82" rx="12" fill="#ecfdf5" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="417" y="157" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="700" fill="#152942">Public Network Load Balancer</text>
+<text x="417" y="182" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">3 static Elastic IPs • ports 80 / 443 / 10051</text>
+<text x="417" y="204" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">TCP forwarding to Swarm managers</text>
+<polyline points="305,170 400,170" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="55" y="265" width="1390" height="525" rx="16" fill="#dce9f8" fill-opacity="0.45" stroke="#b7cbe1" stroke-width="1.2"/>
+<text x="71" y="291" font-family="DejaVu Sans,sans-serif" font-size="15" font-weight="700" fill="#385675">VPC 10.60.0.0/16 • three availability zones</text>
+<rect x="80" y="310" width="420" height="420" rx="16" fill="#eef4ff" fill-opacity="0.45" stroke="#b7cbe1" stroke-width="1.2"/>
+<text x="96" y="336" font-family="DejaVu Sans,sans-serif" font-size="15" font-weight="700" fill="#385675">Availability zone 1</text>
+<rect x="100" y="355" width="380" height="94" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="117" y="382" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="700" fill="#152942">Manager 1 — public subnet</text>
+<text x="117" y="407" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">Public IPv4 • Docker Swarm manager</text>
+<text x="117" y="429" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">Traefik ingress participates in Swarm</text>
+<rect x="100" y="540" width="380" height="132" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="117" y="567" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="700" fill="#152942">Worker 1 — private subnet</text>
+<text x="117" y="592" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">etcd • Patroni / TimescaleDB • Keeper</text>
+<text x="117" y="614" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">ClickHouse • Zabbix HA server</text>
+<text x="117" y="636" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">Dedicated EBS per persistent service</text>
+<polyline points="290,449 290,540" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="302" y="500" font-family="DejaVu Sans,sans-serif" font-size="13" font-weight="400" fill="#52657d">encrypted overlay</text>
+<polyline points="530,212 290,355" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="530" y="310" width="420" height="420" rx="16" fill="#eef4ff" fill-opacity="0.45" stroke="#b7cbe1" stroke-width="1.2"/>
+<text x="546" y="336" font-family="DejaVu Sans,sans-serif" font-size="15" font-weight="700" fill="#385675">Availability zone 2</text>
+<rect x="550" y="355" width="380" height="94" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="567" y="382" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="700" fill="#152942">Manager 2 — public subnet</text>
+<text x="567" y="407" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">Public IPv4 • Docker Swarm manager</text>
+<text x="567" y="429" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">Traefik ingress participates in Swarm</text>
+<rect x="550" y="540" width="380" height="132" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="567" y="567" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="700" fill="#152942">Worker 2 — private subnet</text>
+<text x="567" y="592" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">etcd • Patroni / TimescaleDB • Keeper</text>
+<text x="567" y="614" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">ClickHouse • Zabbix HA server</text>
+<text x="567" y="636" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">Dedicated EBS per persistent service</text>
+<polyline points="740,449 740,540" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="752" y="500" font-family="DejaVu Sans,sans-serif" font-size="13" font-weight="400" fill="#52657d">encrypted overlay</text>
+<polyline points="595,212 740,355" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="980" y="310" width="420" height="420" rx="16" fill="#eef4ff" fill-opacity="0.45" stroke="#b7cbe1" stroke-width="1.2"/>
+<text x="996" y="336" font-family="DejaVu Sans,sans-serif" font-size="15" font-weight="700" fill="#385675">Availability zone 3</text>
+<rect x="1000" y="355" width="380" height="94" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="1017" y="382" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="700" fill="#152942">Manager 3 — public subnet</text>
+<text x="1017" y="407" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">Public IPv4 • Docker Swarm manager</text>
+<text x="1017" y="429" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">Traefik ingress participates in Swarm</text>
+<rect x="1000" y="540" width="380" height="132" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="1017" y="567" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="700" fill="#152942">Worker 3 — private subnet</text>
+<text x="1017" y="592" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">etcd • Patroni / TimescaleDB • Keeper</text>
+<text x="1017" y="614" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">ClickHouse • Zabbix HA server</text>
+<text x="1017" y="636" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">Dedicated EBS per persistent service</text>
+<text x="1017" y="658" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">Proxy 001 + dedicated proxy EBS</text>
+<polyline points="1190,449 1190,540" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="1202" y="500" font-family="DejaVu Sans,sans-serif" font-size="13" font-weight="400" fill="#52657d">encrypted overlay</text>
+<polyline points="660,212 1190,355" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="550" y="804" width="400" height="67" rx="12" fill="#fff8e8" stroke="#eccd87" stroke-width="1.5"/>
+<text x="567" y="831" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="700" fill="#152942">Shared NAT gateway + 1 Elastic IP</text>
+<text x="567" y="856" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">All private subnets use one NAT for outbound access</text>
+<text x="990" y="840" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#795c21">One NAT is a single outbound failure point.</text>
+</svg>

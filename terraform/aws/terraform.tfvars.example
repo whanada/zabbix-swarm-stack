@@ -1,0 +1,11 @@
+# Populate with values suitable for your region and intended workload.
+ami_id                = "ami-REPLACE"
+worker_instance_type  = "REPLACE_WITH_SIZED_INSTANCE"
+allowed_web_cidrs     = []
+volume_sizes_gb = {
+  postgres   = 100
+  etcd       = 10
+  clickhouse = 200
+  keeper     = 10
+  proxy      = 20
+}

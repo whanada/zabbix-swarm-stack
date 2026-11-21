@@ -1,0 +1,32 @@
+---
+- name: Refresh private registry credentials for Patroni services
+  hosts: swarm_manager_primary
+  become: true
+  gather_facts: false
+  vars:
+    expected_registry: "{{ lookup('env', 'ECR_REGISTRY') }}"
+    expected_repository: "{{ lookup('env', 'ECR_REPOSITORY') }}"
+    patroni_services: [zabbix_data_db1, zabbix_data_db2, zabbix_data_db3]
+  tasks:
+    - name: Require ECR settings
+      ansible.builtin.assert:
+        that:
+          - expected_registry is match('^[0-9]{12}\\.dkr\\.ecr\\.us-east-1\\.amazonaws\\.com$')
+          - expected_repository | length > 0
+
+    - name: Refresh each service with short-lived ECR credentials
+      when: not ansible_check_mode
+      block:
+        - name: Authenticate to ECR
+          ansible.builtin.include_tasks: tasks/ecr-login.yml
+        - name: Refresh one service at a time
+          ansible.builtin.include_tasks: tasks/refresh-ecr-service.yml
+          loop: "{{ patroni_services }}"
+          loop_control:
+            loop_var: patroni_service
+      always:
+        - name: Remove temporary registry credentials
+          ansible.builtin.file:
+            path: "{{ ecr_auth_directory.path }}"
+            state: absent
+          when: ecr_auth_directory.path is defined

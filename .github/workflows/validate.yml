@@ -1,0 +1,45 @@
+name: Validate infrastructure
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform/aws
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform fmt -check -recursive
+      - run: terraform init -backend=false -input=false -lockfile=readonly
+      - run: terraform validate -no-color
+
+  ansible:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m pip install 'ansible-core>=2.17,<2.20' boto3 cryptography
+      - run: ansible-galaxy collection install -r ansible/requirements.yml -p ansible/collections
+      - name: Check playbook syntax
+        run: |
+          for playbook in ansible/*.yml ansible/aws/*.yml; do
+            [ "$playbook" = ansible/requirements.yml ] && continue
+            ansible-playbook -i 'localhost,' --syntax-check "$playbook"
+          done
+      - name: Render and validate stack templates
+        run: python3 tests/validate_stack_templates.py
+      - name: Validate example image configuration
+        run: |
+          set -a
+          source .env.example
+          set +a
+          ansible-playbook -i localhost, ansible/aws/preflight-images.yml
+      - name: Test certificate bootstrap
+        run: python3 tests/test_aws_certificates.py

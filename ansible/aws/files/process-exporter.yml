@@ -1,0 +1,4 @@
+# Aggregate host processes by executable name to avoid per-PID cardinality.
+process_names:
+  - name: '{{.Comm}}'
+    cmdline: ['.+']

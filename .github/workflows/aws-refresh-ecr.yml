@@ -1,0 +1,49 @@
+name: Refresh Swarm ECR credentials
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 */6 * * *'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: zabbix-ha-aws-deployment
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    environment: production
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: us-east-1
+      AWS_DEFAULT_REGION: us-east-1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ANSIBLE_ROLE_ARN }}
+          aws-region: us-east-1
+      - name: Install Ansible and AWS libraries
+        run: |
+          python3 -m pip install 'ansible-core>=2.17,<2.20' boto3 botocore
+          ansible-galaxy collection install -r ansible/requirements.yml -p ansible/collections
+      - name: Install AWS Session Manager plugin
+        run: |
+          curl -fsSL https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb -o /tmp/session-manager-plugin.deb
+          sudo dpkg -i /tmp/session-manager-plugin.deb
+      - name: Read SSM transfer bucket from Terraform state
+        working-directory: terraform/aws
+        run: |
+          terraform init -input=false -lockfile=readonly -backend-config=backend.hcl.example
+          echo "ANSIBLE_SSM_BUCKET=$(terraform output -raw ansible_transfer_bucket)" >> "$GITHUB_ENV"
+      - name: Refresh authorization on each Patroni service
+        run: |
+          set -a
+          source .env.example
+          set +a
+          ansible-playbook -i ansible/inventory/aws.aws_ec2.yml ansible/aws/refresh-ecr-auth.yml

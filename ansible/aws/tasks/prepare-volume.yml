@@ -1,0 +1,53 @@
+---
+- name: Wait for the EBS volume's stable NVMe symlink
+  ansible.builtin.wait_for:
+    path: "/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_{{ disk.volumes[0].id | replace('-', '') }}"
+    timeout: 180
+
+- name: Read filesystem type without modifying the disk
+  ansible.builtin.command:
+    argv: [blkid, -p, -s, TYPE, -o, value, "/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_{{ disk.volumes[0].id | replace('-', '') }}"]
+  register: disk_fs
+  changed_when: false
+  failed_when: disk_fs.rc not in [0, 2]
+
+- name: Inspect existing signatures
+  ansible.builtin.command:
+    argv: [wipefs, --noheadings, --output, TYPE, "/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_{{ disk.volumes[0].id | replace('-', '') }}"]
+  register: disk_signatures
+  changed_when: false
+
+- name: Refuse a filesystem or signature the playbook does not manage
+  ansible.builtin.assert:
+    that:
+      - disk_fs.stdout | trim in ['', 'ext4']
+      - disk_fs.stdout | trim != '' or disk_signatures.stdout | trim == ''
+    fail_msg: "Unexpected signatures on {{ disk.volumes[0].id }}; refusing to format."
+
+- name: Format a blank dedicated disk
+  ansible.builtin.command:
+    argv: [mkfs.ext4, -F, "/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_{{ disk.volumes[0].id | replace('-', '') }}"]
+  when: disk_fs.stdout | trim == '' and not ansible_check_mode
+
+- name: Create the service mountpoint
+  ansible.builtin.file:
+    path: "{{ data_root }}/{{ disk.item }}"
+    state: directory
+    mode: '0755'
+
+- name: Persistently mount the service disk
+  ansible.posix.mount:
+    path: "{{ data_root }}/{{ disk.item }}"
+    src: "/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_{{ disk.volumes[0].id | replace('-', '') }}"
+    fstype: ext4
+    opts: defaults
+    state: mounted
+  when: not ansible_check_mode
+
+- name: Assign the PostgreSQL volume to the image postgres account
+  ansible.builtin.file:
+    path: "{{ data_root }}/postgres"
+    owner: '70'
+    group: '70'
+    mode: '0700'
+  when: disk.item == 'postgres' and not ansible_check_mode

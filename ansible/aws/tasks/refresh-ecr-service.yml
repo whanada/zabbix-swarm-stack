@@ -1,0 +1,34 @@
+---
+- name: Inspect current image for {{ patroni_service }}
+  ansible.builtin.command:
+    argv: [docker, service, inspect, --format, '{% raw %}{{.Spec.TaskTemplate.ContainerSpec.Image}}{% endraw %}', "{{ patroni_service }}"]
+  register: patroni_service_image
+  changed_when: false
+
+- name: Ensure {{ patroni_service }} uses the intended ECR repository
+  ansible.builtin.assert:
+    that: patroni_service_image.stdout.startswith(expected_registry + '/' + expected_repository + ':')
+
+- name: Confirm {{ patroni_service }} is running before refreshing
+  ansible.builtin.command:
+    argv: [docker, service, ps, --filter, desired-state=running, --format, '{% raw %}{{.CurrentState}}{% endraw %}', "{{ patroni_service }}"]
+  register: patroni_task_state
+  changed_when: false
+  retries: 20
+  delay: 3
+  until: patroni_task_state.stdout is match('^Running ')
+
+- name: Update registry authorization for {{ patroni_service }}
+  ansible.builtin.command:
+    argv: [docker, service, update, --detach=true, --with-registry-auth, "{{ patroni_service }}"]
+  environment:
+    DOCKER_CONFIG: "{{ ecr_auth_directory.path }}"
+
+- name: Confirm {{ patroni_service }} remains running
+  ansible.builtin.command:
+    argv: [docker, service, ps, --filter, desired-state=running, --format, '{% raw %}{{.CurrentState}}{% endraw %}', "{{ patroni_service }}"]
+  register: patroni_after_refresh
+  changed_when: false
+  retries: 20
+  delay: 3
+  until: patroni_after_refresh.stdout is match('^Running ')

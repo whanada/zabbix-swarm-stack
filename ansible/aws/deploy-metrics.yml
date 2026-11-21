@@ -1,0 +1,45 @@
+---
+- name: Deploy PostgreSQL, TimescaleDB and PgBouncer exporters
+  hosts: swarm_manager_primary
+  become: true
+  gather_facts: false
+  vars_files:
+    - vars/images.yml
+  vars:
+    pgscv_contents: "{{ lookup('file', playbook_dir + '/files/pgscv.yml') }}"
+    pgscv_config_name: "zbx_pgscv_{{ (pgscv_contents | hash('sha256'))[:12] }}"
+    process_exporter_contents: "{{ lookup('file', playbook_dir + '/files/process-exporter.yml') }}"
+    process_exporter_config_name: "zbx_process_{{ (process_exporter_contents | hash('sha256'))[:12] }}"
+  tasks:
+    - name: Require exporter credentials
+      ansible.builtin.command:
+        argv: [docker, secret, inspect, "{{ item }}"]
+      loop: [metrics_pg_password, metrics_pgbouncer_password]
+      changed_when: false
+      when: not ansible_check_mode
+    - name: Prepare the TimescaleDB collector configuration
+      ansible.builtin.include_tasks: tasks/docker-config.yml
+      vars:
+        config_item:
+          name: "{{ pgscv_config_name }}"
+          content: "{{ pgscv_contents }}"
+      when: not ansible_check_mode
+    - name: Prepare the process exporter configuration
+      ansible.builtin.include_tasks: tasks/docker-config.yml
+      vars:
+        config_item:
+          name: "{{ process_exporter_config_name }}"
+          content: "{{ process_exporter_contents }}"
+      when: not ansible_check_mode
+    - name: Render the exporter stack
+      ansible.builtin.template:
+        src: templates/metrics-stack.yml.j2
+        dest: /tmp/zabbix-metrics-stack.yml
+        mode: '0600'
+    - name: Validate the exporter stack
+      ansible.builtin.command: docker stack config -c /tmp/zabbix-metrics-stack.yml
+      changed_when: false
+      when: not ansible_check_mode
+    - name: Deploy the exporter stack
+      ansible.builtin.command: docker stack deploy --with-registry-auth -c /tmp/zabbix-metrics-stack.yml zabbix_metrics
+      when: not ansible_check_mode
