@@ -26,6 +26,7 @@ env:
   AWS_REGION: us-east-1
   AWS_DEFAULT_REGION: us-east-1
   TF_IN_AUTOMATION: 'true'
+  ZABBIX_ANSIBLE_NO_LOG: 'true'
   TF_VAR_ami_id: ${{ vars.ZABBIX_AMI_ID }}
   TF_VAR_manager_instance_type: ${{ vars.ZABBIX_MANAGER_INSTANCE_TYPE }}
   TF_VAR_worker_instance_type: ${{ vars.ZABBIX_WORKER_INSTANCE_TYPE }}
@@ -42,8 +43,8 @@ jobs:
       run:
         working-directory: terraform/aws
     steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - uses: actions/checkout@v6.1.0
+      - uses: hashicorp/setup-terraform@v4.0.1
       - run: terraform fmt -check -recursive
       - run: terraform init -backend=false -input=false -lockfile=readonly
       - run: terraform validate -no-color
@@ -51,7 +52,7 @@ jobs:
   validate-ansible:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6.1.0
       - run: python3 -m pip install 'ansible-core>=2.17,<2.20' boto3 cryptography
       - run: ansible-galaxy collection install -r ansible/requirements.yml -p ansible/collections
       - name: Check playbook syntax
@@ -77,8 +78,8 @@ jobs:
     environment: production
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - uses: actions/checkout@v6.1.0
+      - uses: hashicorp/setup-terraform@v4.0.1
         with:
           terraform_wrapper: false
       - name: Install Ansible dependencies
@@ -87,7 +88,7 @@ jobs:
           ansible-galaxy collection install -r ansible/requirements.yml -p ansible/collections
       - name: Configure Terraform AWS credentials
         if: github.event_name == 'workflow_dispatch' && inputs.operation == 'deploy'
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6.3.0
         with:
           role-to-assume: ${{ vars.AWS_TERRAFORM_ROLE_ARN }}
           aws-region: us-east-1
@@ -112,7 +113,7 @@ jobs:
           terraform apply -input=false -no-color tfplan
       - name: Configure Ansible AWS credentials
         if: github.event_name == 'schedule' || inputs.operation == 'deploy' || inputs.operation == 'refresh-ecr'
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6.3.0
         with:
           role-to-assume: ${{ vars.AWS_ANSIBLE_ROLE_ARN }}
           aws-region: us-east-1
@@ -136,7 +137,6 @@ jobs:
           export ZABBIX_APM_ENABLED="${INPUT_ZABBIX_APM_ENABLED:-false}"
           test -n "$ZABBIX_FRONTEND_HOST"
           test -n "$ZABBIX_TCP_HOST"
-          ansible-inventory -i ansible/inventory/aws.aws_ec2.yml --graph
           ansible-playbook -i ansible/inventory/aws.aws_ec2.yml ansible/aws/prepare-swarm.yml
           ansible-playbook -i ansible/inventory/aws.aws_ec2.yml ansible/aws/prepare-volumes.yml
           ansible-playbook -i ansible/inventory/aws.aws_ec2.yml ansible/aws/site.yml
@@ -149,7 +149,7 @@ jobs:
           ansible-playbook -i ansible/inventory/aws.aws_ec2.yml ansible/aws/refresh-ecr-auth.yml
       - name: Configure image publisher AWS credentials
         if: github.event_name == 'workflow_dispatch' && inputs.operation == 'publish-image'
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6.3.0
         with:
           role-to-assume: ${{ vars.AWS_ECR_PUBLISH_ROLE_ARN }}
           aws-region: us-east-1

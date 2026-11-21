@@ -1,6 +1,7 @@
 ---
 - name: Refresh private registry credentials for Patroni services
   hosts: swarm_manager_primary
+  no_log: "{{ lookup('env', 'ZABBIX_ANSIBLE_NO_LOG') | default('true', true) | bool }}"
   become: true
   gather_facts: false
   vars:

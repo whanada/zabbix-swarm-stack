@@ -1,6 +1,7 @@
 ---
 - name: Validate image configuration
   hosts: localhost
+  no_log: "{{ lookup('env', 'ZABBIX_ANSIBLE_NO_LOG') | default('true', true) | bool }}"
   connection: local
   gather_facts: false
   vars_files:

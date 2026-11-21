@@ -6,6 +6,7 @@ from pathlib import Path
 
 account = os.environ['BOOTSTRAP_AWS_ACCOUNT']
 repo = os.environ.get('BOOTSTRAP_GITHUB_REPO', 'whanada/zabbix-swarm-stack')
+subject_prefix = os.environ['BOOTSTRAP_OIDC_SUBJECT_PREFIX']
 region = os.environ.get('AWS_REGION', 'us-east-1')
 bucket = os.environ.get('BOOTSTRAP_STATE_BUCKET', 'tf-states-whanada')
 state = os.environ.get('BOOTSTRAP_STATE_KEY', 'zabbix-ha/aws/terraform.tfstate')
@@ -85,11 +86,11 @@ publisher = policy([
                'ecr:UploadLayerPart', 'ecr:CompleteLayerUpload', 'ecr:PutImage'], ecr_arn),
 ])
 files = {
-    'terraform-trust.json': trust([f'repo:{repo}:ref:refs/heads/main', f'repo:{repo}:environment:production']),
-    'ansible-trust.json': trust([f'repo:{repo}:environment:production']),
+    'terraform-trust.json': trust([f'{subject_prefix}:ref:refs/heads/main', f'{subject_prefix}:environment:production']),
+    'ansible-trust.json': trust([f'{subject_prefix}:environment:production']),
     'terraform-policy.json': terraform,
     'ansible-policy.json': ansible,
-    'ecr-trust.json': trust([f'repo:{repo}:environment:production']),
+    'ecr-trust.json': trust([f'{subject_prefix}:environment:production']),
     'ecr-policy.json': publisher,
 }
 for name, data in files.items():

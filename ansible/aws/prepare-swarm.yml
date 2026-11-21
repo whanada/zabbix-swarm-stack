@@ -1,6 +1,7 @@
 ---
 - name: Prepare EC2 nodes for Swarm
   hosts: swarm_nodes
+  no_log: "{{ lookup('env', 'ZABBIX_ANSIBLE_NO_LOG') | default('true', true) | bool }}"
   become: true
   gather_facts: true
   tasks:
@@ -30,6 +31,7 @@
 
 - name: Initialize Swarm and encrypted ingress
   hosts: swarm_manager_primary
+  no_log: "{{ lookup('env', 'ZABBIX_ANSIBLE_NO_LOG') | default('true', true) | bool }}"
   become: true
   gather_facts: false
   vars:
@@ -84,6 +86,7 @@
 
 - name: Join remaining managers and workers
   hosts: swarm_manager_secondary:swarm_workers
+  no_log: "{{ lookup('env', 'ZABBIX_ANSIBLE_NO_LOG') | default('true', true) | bool }}"
   become: true
   gather_facts: false
   vars:
@@ -121,6 +124,7 @@
 
 - name: Assign stable node-specific placement labels
   hosts: swarm_manager_primary
+  no_log: "{{ lookup('env', 'ZABBIX_ANSIBLE_NO_LOG') | default('true', true) | bool }}"
   become: true
   gather_facts: false
   tasks:

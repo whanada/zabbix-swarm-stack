@@ -1,6 +1,7 @@
 ---
 - name: Prepare dedicated worker volumes
   hosts: swarm_workers
+  no_log: "{{ lookup('env', 'ZABBIX_ANSIBLE_NO_LOG') | default('true', true) | bool }}"
   become: true
   gather_facts: false
   vars:

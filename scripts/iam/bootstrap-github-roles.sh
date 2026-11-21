@@ -15,6 +15,13 @@ BOOTSTRAP_AWS_ACCOUNT=$(aws sts get-caller-identity --query Account --output tex
 aws s3api head-bucket --bucket "$BOOTSTRAP_STATE_BUCKET" --expected-bucket-owner "$BOOTSTRAP_AWS_ACCOUNT" >/dev/null
 provider="arn:aws:iam::${BOOTSTRAP_AWS_ACCOUNT}:oidc-provider/token.actions.githubusercontent.com"
 aws iam get-open-id-connect-provider --open-id-connect-provider-arn "$provider" --query 'ClientIDList' --output text | grep -qw sts.amazonaws.com
+# Use GitHub's configured OIDC subject prefix, including immutable IDs when enabled.
+export BOOTSTRAP_OIDC_SUBJECT_PREFIX
+BOOTSTRAP_OIDC_SUBJECT_PREFIX=$(gh api "repos/${BOOTSTRAP_GITHUB_REPO}/actions/oidc/customization/sub" --jq .sub_claim_prefix)
+[[ "$BOOTSTRAP_OIDC_SUBJECT_PREFIX" == repo:* && "$BOOTSTRAP_OIDC_SUBJECT_PREFIX" != *:*:* ]] || {
+  echo 'GitHub did not return a supported OIDC subject prefix' >&2
+  exit 1
+}
 export BOOTSTRAP_POLICY_DIR
 BOOTSTRAP_POLICY_DIR=$(mktemp -d)
 trap 'rm -rf "$BOOTSTRAP_POLICY_DIR"' EXIT

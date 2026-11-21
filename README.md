@@ -105,6 +105,16 @@ aws secretsmanager get-secret-value --region us-east-1 \
 Protect the CA private key. Swarm secrets are immutable, and certificate
 renewal and rotation are not yet automated.
 
+## Ansible log privacy
+
+Deployment plays default to `no_log: true` and the GitHub workflow explicitly
+enables it. Task names, host identifiers, play recap, and task timings can still
+appear; Terraform output is separate and remains visible in public Actions logs.
+Failures will be censored. For troubleshooting only on a trusted controller with
+private logs, set `ZABBIX_ANSIBLE_NO_LOG=false`. Tasks that handle passwords,
+join tokens, and registry credentials still enforce `no_log: true`.
+Do not enable debug logging or print inventory variables in public workflows.
+
 ## Local checks
 
 ```bash

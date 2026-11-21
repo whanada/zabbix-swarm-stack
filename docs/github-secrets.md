@@ -9,7 +9,9 @@ has not yet been verified. Keep role ARNs and `ZABBIX_*` values as repository
 variables.
 
 The reproducible IAM bootstrap is `scripts/iam/bootstrap-github-roles.sh`; it
-renders policies with `scripts/iam/render-policies.py`. The approved Terraform
+queries the repository OIDC subject prefix using the GitHub CLI and renders
+policies with `scripts/iam/render-policies.py`. Immutable subject IDs are
+required when enabled for the repository. The approved Terraform
 role can manage EC2 and load balancers in `us-east-1`, the specified state path,
 the dedicated SSM bucket, and project node IAM profiles. The Ansible role limits
 SSM sessions to instances tagged `Project=zabbix-ha`, secrets to `zabbix-ha/`,

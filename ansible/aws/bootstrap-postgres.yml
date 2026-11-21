@@ -1,6 +1,7 @@
 ---
 - name: Bootstrap the Zabbix PostgreSQL role and database
   hosts: swarm_manager_primary
+  no_log: "{{ lookup('env', 'ZABBIX_ANSIBLE_NO_LOG') | default('true', true) | bool }}"
   become: true
   gather_facts: false
   vars_files:

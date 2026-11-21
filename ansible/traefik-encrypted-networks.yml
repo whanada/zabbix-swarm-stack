@@ -3,6 +3,7 @@
 # Example: -e '{"traefik_overlay_networks":["monitoring_edge"]}'
 - name: Create and verify encrypted Traefik overlay networks
   hosts: swarm_manager_primary
+  no_log: "{{ lookup('env', 'ZABBIX_ANSIBLE_NO_LOG') | default('true', true) | bool }}"
   gather_facts: false
   vars:
     traefik_overlay_networks: []
