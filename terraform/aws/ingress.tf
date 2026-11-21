@@ -68,13 +68,39 @@ resource "aws_lb_target_group_attachment" "manager" {
   port             = local.ingress_ports[each.value.listener]
 }
 
+resource "aws_lb_target_group" "websecure_tls" {
+  count       = var.frontend_certificate_arn == "" ? 0 : 1
+  name_prefix = "zbxt-"
+  port        = 443
+  protocol    = "TLS"
+  target_type = "instance"
+  vpc_id      = aws_vpc.stack.id
+  health_check {
+    protocol = "TCP"
+    port     = "traffic-port"
+  }
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_lb_target_group_attachment" "websecure_tls" {
+  for_each         = var.frontend_certificate_arn == "" ? toset([]) : toset(["manager-1", "manager-2", "manager-3"])
+  target_group_arn = aws_lb_target_group.websecure_tls[0].arn
+  target_id        = aws_instance.nodes[each.value].id
+  port             = 443
+}
+
 resource "aws_lb_listener" "ingress" {
   for_each          = local.ingress_ports
   load_balancer_arn = aws_lb.ingress.arn
   port              = each.value
-  protocol          = "TCP"
+  protocol          = each.key == "websecure" && var.frontend_certificate_arn != "" ? "TLS" : "TCP"
+  certificate_arn   = each.key == "websecure" && var.frontend_certificate_arn != "" ? var.frontend_certificate_arn : null
+  ssl_policy        = each.key == "websecure" && var.frontend_certificate_arn != "" ? "ELBSecurityPolicy-TLS13-1-2-Res-2021-06" : null
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.ingress[each.key].arn
+    target_group_arn = each.key == "websecure" && var.frontend_certificate_arn != "" ? aws_lb_target_group.websecure_tls[0].arn : aws_lb_target_group.ingress[each.key].arn
   }
+  depends_on = [aws_lb_target_group_attachment.websecure_tls]
 }

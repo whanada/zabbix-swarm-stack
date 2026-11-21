@@ -1,0 +1,105 @@
+receivers:
+  prometheus:
+    config:
+      global:
+        scrape_interval: 60s
+        scrape_timeout: 15s
+      scrape_configs:
+      - job_name: postgres-exporter
+        static_configs:
+        - targets:
+          - zabbix_metrics_postgres-exporter1:9187
+          - zabbix_metrics_postgres-exporter2:9187
+          - zabbix_metrics_postgres-exporter3:9187
+        metric_relabel_configs: &id001
+        - source_labels:
+          - __name__
+          regex: pg_up|pg_stat_database_(numbackends|xact_commit|xact_rollback|deadlocks|blks_hit|blks_read)|postgres_timescale_hypertable_(chunks|total_bytes|compressed_chunks|bytes_before_compression|bytes_after_compression)|postgres_timescale_jobs_(runs_total|failures_total)|pgbouncer_up|pgbouncer_pools_(client_active_connections|client_waiting_connections|server_active_connections|server_idle_connections)|patroni_(primary|replica|postgres_running|pending_restart)|etcd_server_(has_leader|is_leader|leader_changes_seen_total)|ClickHouseMetrics_(Query|MemoryTracking)|ClickHouseAsyncMetrics_(Uptime|MemoryResident)|node_(load1|load5|memory_MemAvailable_bytes|memory_MemTotal_bytes|cpu_seconds_total|filesystem_avail_bytes|filesystem_size_bytes)|namedprocess_namegroup_num_procs|container_memory_working_set_bytes|container_cpu_usage_seconds_total|cadvisor_version_info
+          action: keep
+      - job_name: timescaledb-pgscv
+        static_configs:
+        - targets:
+          - zabbix_metrics_pgscv1:9890
+          - zabbix_metrics_pgscv2:9890
+          - zabbix_metrics_pgscv3:9890
+        metric_relabel_configs: *id001
+      - job_name: pgbouncer-exporter
+        static_configs:
+        - targets:
+          - zabbix_metrics_pgbouncer-exporter1:9127
+          - zabbix_metrics_pgbouncer-exporter2:9127
+        metric_relabel_configs: *id001
+      - job_name: patroni
+        static_configs:
+        - targets:
+          - zabbix_data_db1:8008
+          - zabbix_data_db2:8008
+          - zabbix_data_db3:8008
+        metric_relabel_configs: *id001
+      - job_name: etcd
+        static_configs:
+        - targets:
+          - zabbix_data_etcd1:2379
+          - zabbix_data_etcd2:2379
+          - zabbix_data_etcd3:2379
+        metric_relabel_configs: *id001
+      - job_name: clickhouse
+        static_configs:
+        - targets:
+          - zabbix_clickhouse_clickhouse1:9363
+          - zabbix_clickhouse_clickhouse2:9363
+          - zabbix_clickhouse_clickhouse3:9363
+        metric_relabel_configs: *id001
+      - job_name: node-exporter
+        dns_sd_configs:
+        - names:
+          - tasks.zabbix_metrics_node-exporter
+          type: A
+          port: 9100
+          refresh_interval: 60s
+        metric_relabel_configs: *id001
+      - job_name: process-exporter
+        dns_sd_configs:
+        - names:
+          - tasks.zabbix_metrics_process-exporter
+          type: A
+          port: 9256
+          refresh_interval: 60s
+        metric_relabel_configs: *id001
+      - job_name: cadvisor
+        dns_sd_configs:
+        - names:
+          - tasks.zabbix_metrics_cadvisor
+          type: A
+          port: 8080
+          refresh_interval: 60s
+        metric_relabel_configs: *id001
+processors:
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 350
+    spike_limit_mib: 80
+  batch:
+    send_batch_size: 1024
+    timeout: 10s
+exporters:
+  otlp/zabbix:
+    endpoint: zabbix_app_proxy001:4317
+    tls:
+      insecure: true
+    sending_queue:
+      enabled: true
+      queue_size: 256
+    retry_on_failure:
+      enabled: true
+      max_elapsed_time: 300s
+service:
+  pipelines:
+    metrics:
+      receivers:
+      - prometheus
+      processors:
+      - memory_limiter
+      - batch
+      exporters:
+      - otlp/zabbix

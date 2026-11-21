@@ -1,5 +1,50 @@
 version: '3.8'
 services:
+{% if zabbix_apm_enabled %}
+  otel-logs:
+    image: {{ otel_collector_image }}
+    user: '0:0'
+    command: ['--config=/etc/otelcol/logs.yaml']
+    environment:
+      SWARM_NODE_NAME: '{% raw %}{{.Node.Hostname}}{% endraw %}'
+    configs:
+      - source: otel_logs_config
+        target: /etc/otelcol/logs.yaml
+    volumes:
+      - type: bind
+        source: /
+        target: /host
+        read_only: true
+      - type: bind
+        source: /var/lib/docker/containers
+        target: /var/lib/docker/containers
+        read_only: true
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+        read_only: true
+      - type: volume
+        source: otel_logs_checkpoints
+        target: /var/lib/otelcol
+    networks: [backend]
+    deploy:
+      mode: global
+      resources:
+        limits: {cpus: '0.25', memory: 256M}
+  otel-collector:
+    image: {{ otel_collector_image }}
+    command: ['--config=/etc/otelcol/config.yaml']
+    configs:
+      - source: otel_collector_config
+        target: /etc/otelcol/config.yaml
+    networks: [backend]
+    deploy:
+      replicas: 1
+      placement:
+        constraints: ['node.role == worker']
+      resources:
+        limits: {cpus: '0.5', memory: 512M}
+{% endif %}
 {% for n in range(1, 4) %}
   postgres-exporter{{ n }}:
     image: {{ postgres_exporter_image }}
@@ -120,6 +165,14 @@ networks:
     external: true
     name: zabbix_backend
 configs:
+{% if zabbix_apm_enabled %}
+  otel_logs_config:
+    external: true
+    name: {{ otel_logs_config_name }}
+  otel_collector_config:
+    external: true
+    name: {{ otel_collector_config_name }}
+{% endif %}
   pgscv_config:
     external: true
     name: {{ pgscv_config_name }}
@@ -131,3 +184,8 @@ secrets:
     external: true
   metrics_pgbouncer_password:
     external: true
+{% if zabbix_apm_enabled %}
+volumes:
+  otel_logs_checkpoints:
+    driver: local
+{% endif %}

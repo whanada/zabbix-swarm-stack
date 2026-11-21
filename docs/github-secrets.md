@@ -25,6 +25,7 @@ repository, plus the registry-wide `ecr:GetAuthorizationToken` action.
 | Variable | `AWS_ANSIBLE_ROLE_ARN` | Inventory, SSM, S3, Secrets Manager and ECR pull role. |
 | Variable | `AWS_ECR_PUBLISH_ROLE_ARN` | ECR image publication role. |
 | Variable | `ZABBIX_FRONTEND_HOST` | Frontend hostname. |
+| Variable | `ZABBIX_FRONTEND_CERTIFICATE_ARN` | ARN of the issued ACM certificate used by the HTTPS NLB listener. |
 | Variable | `ZABBIX_TCP_HOST` | Zabbix TCP hostname used for SNI. |
 | Variable | `ZABBIX_APM_ENABLED` | Enables optional APM when `true`. |
 | Variable | `ZABBIX_AMI_ID` | Ubuntu 24.04 LTS AMI in `us-east-1`. |
@@ -44,10 +45,12 @@ certificates, and a Traefik certificate for `ZABBIX_FRONTEND_HOST`.
 startup. An existing valid Traefik certificate and key are preserved; changing
 its hostname requires a deliberate coordinated rotation.
 
-For a hostname resolved through a client `hosts` file, install the public
-`zabbix-ha/zabbix_ca` certificate in that client's trust store. This is a
-private CA, not a publicly trusted certificate. The three Zabbix servers share
-a server certificate; the proxy has a separate certificate and key.
+The public HTTPS listener uses the ACM certificate identified by
+`ZABBIX_FRONTEND_CERTIFICATE_ARN`. The Traefik certificate encrypts the
+NLB-to-Traefik connection, although the NLB does not verify that certificate.
+The private CA also protects internal Zabbix communication.
+The three Zabbix servers share a server certificate; the proxy has a separate
+certificate and key.
 
 As requested, the bootstrap appends base64-encoded values to
 `.secrets-temp.txt` with mode 0600. Base64 is not encryption: protect this file.

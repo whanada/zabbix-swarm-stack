@@ -51,3 +51,11 @@
     group: '70'
     mode: '0700'
   when: disk.item == 'postgres' and not ansible_check_mode
+
+- name: Assign the proxy volume to the image zabbix account
+  ansible.builtin.file:
+    path: "{{ data_root }}/proxy"
+    owner: '1997'
+    group: '1995'
+    mode: '0750'
+  when: disk.item == 'proxy' and not ansible_check_mode

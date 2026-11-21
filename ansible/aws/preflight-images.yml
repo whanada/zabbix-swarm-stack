@@ -33,6 +33,7 @@
         - { key: NODE_EXPORTER_IMAGE, value: "{{ node_exporter_image }}" }
         - { key: PROCESS_EXPORTER_IMAGE, value: "{{ process_exporter_image }}" }
         - { key: CADVISOR_IMAGE, value: "{{ cadvisor_image }}" }
+        - { key: OTEL_COLLECTOR_IMAGE, value: "{{ otel_collector_image }}" }
       loop_control:
         label: "{{ item.key }}"
 

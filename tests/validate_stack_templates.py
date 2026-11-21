@@ -13,6 +13,22 @@ ROOT = Path(__file__).resolve().parent.parent
 env = Environment(loader=FileSystemLoader(ROOT / "ansible/aws/templates"), undefined=StrictUndefined)
 env.filters["to_json"] = json.dumps
 server_vars = yaml.safe_load((ROOT / "ansible/aws/vars/server.yml").read_text())["zabbix_server_environment"]
+logs_config = yaml.safe_load((ROOT / "ansible/aws/files/otel-container-logs.yml").read_text())
+assert logs_config["extensions"]["docker_observer"]["include_all_containers"] is True
+logs_discovery = logs_config["receivers"]["receiver_creator/docker-logs"]["receivers"]["file_log/per-container"]
+assert "port == 0" in logs_discovery["rule"]
+assert "swarm.stack.name" in logs_discovery["resource_attributes"]
+assert 'labels["com.docker.swarm.service.name"]' in logs_discovery["resource_attributes"]["service.name"]
+audit_parser = logs_config["receivers"]["file_log/audit"]["operators"][0]
+assert audit_parser["timestamp"]["layout_type"] == "epoch"
+assert audit_parser["timestamp"]["layout"] == "s.ms"
+for job in ("journal", "auditd"):
+    pipeline = logs_config["service"]["pipelines"][f"logs/{job}"]
+    processor = logs_config["processors"][f"resource/{job}"]
+    attributes = {entry["key"]: entry["value"] for entry in processor["attributes"]}
+    assert attributes == {"service.name": "hosts-swarm", "host.name": "${env:SWARM_NODE_NAME}", "job": job}
+    assert f"resource/{job}" in pipeline["processors"]
+    assert "otlp/zabbix" in pipeline["exporters"]
 required_keys = {line for line in (ROOT / "tests/fixtures/legacy-server-environment.txt").read_text().splitlines() if line and not line.startswith("#")}
 missing = required_keys - set(server_vars)
 if missing:
@@ -31,6 +47,9 @@ common = dict(
     node_exporter_image="prom/node-exporter:v1.12.1",
     process_exporter_image="ncabatoff/process-exporter:0.8.7",
     cadvisor_image="ghcr.io/google/cadvisor:v0.60.6",
+    otel_collector_image="otel/opentelemetry-collector-contrib:0.165.0",
+    otel_collector_config_name="config_otel_collector",
+    otel_logs_config_name="config_otel_logs",
     patroni_config_name="config_patroni",
     haproxy_config_name="config_haproxy",
     pgbouncer_haproxy_config_name="config_pgbouncer_haproxy",

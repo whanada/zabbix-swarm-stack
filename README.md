@@ -85,25 +85,26 @@ A single NAT gateway reduces cost but makes worker outbound connectivity
 dependent on one availability zone. EC2, EBS, NAT, NLB, public IPv4 addresses
 and Secrets Manager are billable.
 
-## Local name resolution and TLS
+## Public DNS and TLS
 
-The intended name is `zabbix.wildeshanada.com`, resolved using the client's
-`hosts` file rather than public DNS. After apply, Terraform output
-`ingress_public_ips` contains the three fixed NLB addresses. Add the name and
-an appropriate address to the client's `hosts` file. A client pinned to a single
-address depends on that NLB zone; test how the client handles alternative IPs.
+Point the frontend hostname to the NLB DNS name using a DNS-only CNAME. The
+GitHub repository variable `ZABBIX_FRONTEND_CERTIFICATE_ARN` identifies an
+issued AWS Certificate Manager public certificate in `us-east-1` for that
+hostname. The certificate is managed outside this Terraform state: retain its
+ACM DNS-validation CNAME with the DNS provider for managed renewal.
 
-Ansible generates a private CA and a frontend certificate. The browser will
-trust the certificate only after the public CA certificate is installed in the
-client's trust store. Retrieve the public certificate without exposing the key:
+When the ARN is set, the NLB terminates public HTTPS using the ACM certificate
+and establishes a separate TLS connection to Traefik on port 443. AWS NLB does
+not validate the certificate presented by TLS targets; the existing Traefik
+certificate is signed by the private CA. Zabbix port 10051 remains TCP
+passthrough. The private CA and certificates are still used for internal Zabbix
+connections. The legacy TCP HTTPS passthrough is retained only when the ACM ARN
+is empty; browsers do not trust the private CA unless it is installed locally.
 
-```bash
-aws secretsmanager get-secret-value --region us-east-1 \
-  --secret-id zabbix-ha/zabbix_ca --query SecretString --output text > zabbix-ha-ca.crt
-```
-
-Protect the CA private key. Swarm secrets are immutable, and certificate
-renewal and rotation are not yet automated.
+The ACM certificate must already be issued before applying Terraform. The NLB
+HTTPS target group and listener transition can temporarily interrupt frontend
+connections while targets become healthy. Do not remove the DNS-validation
+record after issuance; ACM needs it for renewal.
 
 ## Host tuning
 
@@ -113,6 +114,14 @@ systemd and Docker resource limits. Docker and containerd configuration changes
 require a planned rolling service restart; systemd manager defaults require a
 manager reexecution or reboot. The playbook does not restart cluster services.
 Review the tuning values against the available EC2 memory before applying them.
+
+Immediately afterward, `ansible/aws/host-logging.yml` installs and starts
+auditd, ensures journald is running with persistent storage, and masks
+`systemd-journald-audit.socket`. It also disables the audit syslog plugin if
+present. Raw audit records are collected from the audit log instead of being
+duplicated in the journal; auditd service messages can still appear there.
+The play does not add audit rules. Run it separately with the AWS inventory
+to prepare existing nodes before updating the logging Collector.
 
 ## Ansible log privacy
 
@@ -151,3 +160,70 @@ access before deployment. Static checks and Ansible check mode do not replace a
 real distributed deployment or failover test.
 
 To regenerate the architecture diagrams, install ImageMagick and run `python3 docs/generate_architecture.py`.
+
+### OpenTelemetry exporter metrics
+
+When `ZABBIX_APM_ENABLED=true`, the metrics stack deploys a single
+OpenTelemetry Collector with the image pinned by `OTEL_COLLECTOR_IMAGE`. The
+upstream Collector has no LTS image tag; its pinned version is an explicit
+exception to the LTS image preference. It scrapes PostgreSQL exporters, pgSCV,
+PgBouncer exporters, Patroni, etcd and ClickHouse, plus individual global
+node-exporter, process-exporter and cAdvisor tasks discovered via Swarm DNS.
+The Collector forwards OTLP/gRPC metrics to the Zabbix proxy over the encrypted
+backend overlay. It does not require a Prometheus server or the Docker socket.
+One replica prevents duplicate scrapes; Collector failover is not high
+availability while that single task is being replaced. Scrape status is exposed
+through Prometheus receiver metrics such as `up`; alerting requires separate
+Zabbix telemetry query items and triggers.
+
+Register the active proxy in **Administration → Proxies**, enable **Data
+collection enabled** on its APM tab, and ensure it synchronizes with the
+server. The per-component telemetry provider and its password are configured
+via environment variables and a Swarm secret. The global data source in
+**Administration → Data source → APM** is separate from per-component provider
+overrides and is not automatically populated by those environment variables.
+See [Zabbix data source documentation](https://www.zabbix.com/documentation/8.0/en/manual/web_interface/frontend_sections/administration/data_source).
+The pipeline uses a memory limiter, a bounded queue, and an allowlist of core
+metric families to reduce cardinality. Review the selected metrics, exporter
+labels, ingestion volume, and retention for the capacity of the deployment.
+When the Collector itself is down, `up` stops arriving; use a no-data alert to
+detect that condition.
+
+### Container logs in APM
+
+With APM enabled, the standard metrics deployment also installs an
+`otel-logs` global Swarm service: one task per node. Each task reads local
+Docker `json-file` container logs through a read-only bind mount, parses the
+Docker timestamp and stream, and discovers container, image, Swarm stack,
+service and task metadata through the local Docker API. For Swarm containers,
+`service.name` is `stack/swarm-service-name`, without the task slot and ID;
+for standalone containers it is the
+container name. It exports OTLP/gRPC logs to the Zabbix proxy. Its local Docker volume holds file offsets
+for that node across task restarts. New deployments start at the end of
+existing files; earlier console logs are not automatically imported. File
+rotation and finite exporter retry queues mean this is not a guarantee against
+log loss during prolonged outages. The reader excludes its own container log
+to avoid a feedback loop when exporting fails. The metrics Collector and all
+other containers are included. For this configuration, Docker must use its
+`json-file` logging driver and retain readable logs under
+`/var/lib/docker/containers`.
+Recognized explicit severity levels in structured `level`, `severity` or
+`log_level` fields and common console prefixes are mapped to OpenTelemetry
+severity. Lines without an explicit recognized level retain an unspecified
+severity; the stream name or HTTP status alone does not determine severity.
+
+The same global Collector reads each node's persistent journal and
+`/var/log/audit/audit.log`. In APM → Logs, filter by `service.name=hosts-swarm`;
+the resource `host.name` identifies the node and `job` is `journal` or
+`auditd`. Collection starts at the end of existing files or the journal on the
+first deployment and resumes from local checkpoints afterward. The host root is
+mounted read-only to let the journald receiver run the host's `journalctl` and
+read journal and audit files. Journal and audit records may include sensitive
+information. Access and retention should be configured accordingly.
+
+Log messages can contain credentials or personal data: review application log
+content, access to APM data, and ClickHouse retention before relying on this
+pipeline. The tasks require root to read Docker's log files. The log directory is
+mounted read-only. The Docker socket is also mounted for discovery; even a
+read-only bind mount of the socket grants powerful Docker API access, so treat
+the Collector as a privileged component.

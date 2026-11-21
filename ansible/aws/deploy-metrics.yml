@@ -11,6 +11,11 @@
     pgscv_config_name: "zbx_pgscv_{{ (pgscv_contents | hash('sha256'))[:12] }}"
     process_exporter_contents: "{{ lookup('file', playbook_dir + '/files/process-exporter.yml') }}"
     process_exporter_config_name: "zbx_process_{{ (process_exporter_contents | hash('sha256'))[:12] }}"
+    otel_collector_contents: "{{ lookup('file', playbook_dir + '/files/otel-collector.yml') }}"
+    otel_collector_config_name: "zbx_otel_{{ (otel_collector_contents | hash('sha256'))[:12] }}"
+    otel_logs_contents: "{{ lookup('file', playbook_dir + '/files/otel-container-logs.yml') }}"
+    otel_logs_config_name: "zbx_logs_{{ (otel_logs_contents | hash('sha256'))[:12] }}"
+    zabbix_apm_enabled: "{{ lookup('env', 'ZABBIX_APM_ENABLED') | default('false', true) | bool }}"
   tasks:
     - name: Require exporter credentials
       ansible.builtin.command:
@@ -32,6 +37,20 @@
           name: "{{ process_exporter_config_name }}"
           content: "{{ process_exporter_contents }}"
       when: not ansible_check_mode
+    - name: Prepare the OpenTelemetry Collector configuration
+      ansible.builtin.include_tasks: tasks/docker-config.yml
+      vars:
+        config_item:
+          name: "{{ otel_collector_config_name }}"
+          content: "{{ otel_collector_contents }}"
+      when: zabbix_apm_enabled and not ansible_check_mode
+    - name: Prepare the container log collector configuration
+      ansible.builtin.include_tasks: tasks/docker-config.yml
+      vars:
+        config_item:
+          name: "{{ otel_logs_config_name }}"
+          content: "{{ otel_logs_contents }}"
+      when: zabbix_apm_enabled and not ansible_check_mode
     - name: Render the exporter stack
       ansible.builtin.template:
         src: templates/metrics-stack.yml.j2

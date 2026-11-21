@@ -38,6 +38,16 @@ variable "allowed_web_cidrs" {
   default     = []
 }
 
+variable "frontend_certificate_arn" {
+  type        = string
+  description = "Issued ACM certificate ARN in the deployment region for public HTTPS; empty keeps TCP passthrough."
+  default     = ""
+  validation {
+    condition     = var.frontend_certificate_arn == "" || can(regex("^arn:aws:acm:us-east-1:[0-9]{12}:certificate/[0-9a-f-]+$", var.frontend_certificate_arn))
+    error_message = "frontend_certificate_arn must be an ACM certificate ARN in us-east-1."
+  }
+}
+
 variable "root_volume_gb" {
   type    = number
   default = 30

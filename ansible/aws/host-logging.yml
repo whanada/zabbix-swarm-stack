@@ -1,0 +1,96 @@
+---
+- name: Prepare host journal and audit logging
+  hosts: swarm_nodes
+  become: true
+  gather_facts: false
+  no_log: "{{ lookup('env', 'ZABBIX_ANSIBLE_NO_LOG') | default('true', true) | bool }}"
+  tasks:
+    - name: Install journald and auditd packages
+      ansible.builtin.apt:
+        name: [systemd, auditd]
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+        lock_timeout: 180
+
+    - name: Create persistent journal directory
+      ansible.builtin.file:
+        path: /var/log/journal
+        state: directory
+        owner: root
+        group: systemd-journal
+        mode: '2755'
+
+    - name: Create journald configuration directory
+      ansible.builtin.file:
+        path: /etc/systemd/journald.conf.d
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Enable persistent journal storage
+      ansible.builtin.copy:
+        dest: /etc/systemd/journald.conf.d/90-zabbix-host-logs.conf
+        content: "[Journal]\nStorage=persistent\n"
+        owner: root
+        group: root
+        mode: '0644'
+      register: journal_configuration
+
+    - name: Ensure journald is running
+      ansible.builtin.systemd_service:
+        name: systemd-journald.service
+        state: started
+
+    - name: Restart journald after changing its configuration
+      ansible.builtin.systemd_service:
+        name: systemd-journald.service
+        state: restarted
+      when: journal_configuration is changed and not ansible_check_mode
+
+    - name: Flush the runtime journal to persistent storage
+      ansible.builtin.command: journalctl --flush
+      changed_when: true
+      when: journal_configuration is changed and not ansible_check_mode
+
+    - name: Check whether audit syslog forwarding is installed
+      ansible.builtin.stat:
+        path: /etc/audit/plugins.d/syslog.conf
+      register: audit_syslog_plugin
+
+    - name: Disable audit syslog forwarding to avoid duplicates
+      ansible.builtin.lineinfile:
+        path: /etc/audit/plugins.d/syslog.conf
+        regexp: '^\s*active\s*='
+        line: active = no
+      when: audit_syslog_plugin.stat.exists
+      register: audit_syslog_config
+
+    - name: Enable and start auditd before disconnecting its journal feed
+      ansible.builtin.systemd_service:
+        name: auditd.service
+        enabled: true
+        state: started
+
+    - name: Reload auditd after changing its forwarding configuration
+      ansible.builtin.command: systemctl kill --kill-whom=main --signal=HUP auditd.service
+      changed_when: true
+      when: audit_syslog_config is changed and not ansible_check_mode
+
+    - name: Check for the journald audit socket
+      ansible.builtin.stat:
+        path: /usr/lib/systemd/system/systemd-journald-audit.socket
+      register: journal_audit_socket
+
+    - name: Stop the journald audit socket
+      ansible.builtin.systemd_service:
+        name: systemd-journald-audit.socket
+        state: stopped
+      when: journal_audit_socket.stat.exists
+
+    - name: Prevent journald from receiving raw audit events
+      ansible.builtin.systemd_service:
+        name: systemd-journald-audit.socket
+        masked: true
+      when: journal_audit_socket.stat.exists

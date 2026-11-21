@@ -1,0 +1,1308 @@
+zabbix_export:
+  version: '8.0'
+  host_groups:
+  - uuid: 064b47f2484f4f83a56b46785f87a54b
+    name: Zabbix Swarm exporters
+  hosts:
+  - host: PostgreSQL exporter 1
+    name: PostgreSQL exporter 1
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'PostgreSQL: Exporter database connection'
+      type: DEPENDENT
+      key: postgres.up
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - pg_up
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://zabbix_metrics_postgres-exporter1:9187/metrics
+  - host: pgSCV TimescaleDB 1
+    name: pgSCV TimescaleDB 1
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'TimescaleDB: History hypertable chunks'
+      type: DEPENDENT
+      key: timescale.history.chunks
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - postgres_timescale_hypertable_chunks{schema_name="public",table_name="history"}
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    - name: 'TimescaleDB: History hypertable bytes'
+      type: DEPENDENT
+      key: timescale.history.bytes
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - postgres_timescale_hypertable_total_bytes{schema_name="public",table_name="history"}
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://zabbix_metrics_pgscv1:9890/metrics
+  - host: Patroni 1
+    name: Patroni 1
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'Patroni: Primary role'
+      type: DEPENDENT
+      key: patroni.primary
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - patroni_primary
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    - name: 'Patroni: PostgreSQL running'
+      type: DEPENDENT
+      key: patroni.running
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - patroni_postgres_running
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://zabbix_data_db1:8008/metrics
+  - host: etcd 1
+    name: etcd 1
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'etcd: Cluster has leader'
+      type: DEPENDENT
+      key: etcd.has_leader
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - etcd_server_has_leader
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    - name: 'etcd: Node is leader'
+      type: DEPENDENT
+      key: etcd.is_leader
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - etcd_server_is_leader
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://zabbix_data_etcd1:2379/metrics
+  - host: ClickHouse 1
+    name: ClickHouse 1
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'ClickHouse: Running queries'
+      type: DEPENDENT
+      key: clickhouse.queries
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - ClickHouseMetrics_Query
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    - name: 'ClickHouse: Uptime in seconds'
+      type: DEPENDENT
+      key: clickhouse.uptime
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - ClickHouseAsyncMetrics_Uptime
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://zabbix_clickhouse_clickhouse1:9363/metrics
+  - host: PostgreSQL exporter 2
+    name: PostgreSQL exporter 2
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'PostgreSQL: Exporter database connection'
+      type: DEPENDENT
+      key: postgres.up
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - pg_up
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://zabbix_metrics_postgres-exporter2:9187/metrics
+  - host: pgSCV TimescaleDB 2
+    name: pgSCV TimescaleDB 2
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'TimescaleDB: History hypertable chunks'
+      type: DEPENDENT
+      key: timescale.history.chunks
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - postgres_timescale_hypertable_chunks{schema_name="public",table_name="history"}
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    - name: 'TimescaleDB: History hypertable bytes'
+      type: DEPENDENT
+      key: timescale.history.bytes
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - postgres_timescale_hypertable_total_bytes{schema_name="public",table_name="history"}
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://zabbix_metrics_pgscv2:9890/metrics
+  - host: Patroni 2
+    name: Patroni 2
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'Patroni: Primary role'
+      type: DEPENDENT
+      key: patroni.primary
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - patroni_primary
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    - name: 'Patroni: PostgreSQL running'
+      type: DEPENDENT
+      key: patroni.running
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - patroni_postgres_running
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://zabbix_data_db2:8008/metrics
+  - host: etcd 2
+    name: etcd 2
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'etcd: Cluster has leader'
+      type: DEPENDENT
+      key: etcd.has_leader
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - etcd_server_has_leader
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    - name: 'etcd: Node is leader'
+      type: DEPENDENT
+      key: etcd.is_leader
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - etcd_server_is_leader
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://zabbix_data_etcd2:2379/metrics
+  - host: ClickHouse 2
+    name: ClickHouse 2
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'ClickHouse: Running queries'
+      type: DEPENDENT
+      key: clickhouse.queries
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - ClickHouseMetrics_Query
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    - name: 'ClickHouse: Uptime in seconds'
+      type: DEPENDENT
+      key: clickhouse.uptime
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - ClickHouseAsyncMetrics_Uptime
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://zabbix_clickhouse_clickhouse2:9363/metrics
+  - host: PostgreSQL exporter 3
+    name: PostgreSQL exporter 3
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'PostgreSQL: Exporter database connection'
+      type: DEPENDENT
+      key: postgres.up
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - pg_up
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://zabbix_metrics_postgres-exporter3:9187/metrics
+  - host: pgSCV TimescaleDB 3
+    name: pgSCV TimescaleDB 3
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'TimescaleDB: History hypertable chunks'
+      type: DEPENDENT
+      key: timescale.history.chunks
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - postgres_timescale_hypertable_chunks{schema_name="public",table_name="history"}
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    - name: 'TimescaleDB: History hypertable bytes'
+      type: DEPENDENT
+      key: timescale.history.bytes
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - postgres_timescale_hypertable_total_bytes{schema_name="public",table_name="history"}
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://zabbix_metrics_pgscv3:9890/metrics
+  - host: Patroni 3
+    name: Patroni 3
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'Patroni: Primary role'
+      type: DEPENDENT
+      key: patroni.primary
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - patroni_primary
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    - name: 'Patroni: PostgreSQL running'
+      type: DEPENDENT
+      key: patroni.running
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - patroni_postgres_running
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://zabbix_data_db3:8008/metrics
+  - host: etcd 3
+    name: etcd 3
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'etcd: Cluster has leader'
+      type: DEPENDENT
+      key: etcd.has_leader
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - etcd_server_has_leader
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    - name: 'etcd: Node is leader'
+      type: DEPENDENT
+      key: etcd.is_leader
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - etcd_server_is_leader
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://zabbix_data_etcd3:2379/metrics
+  - host: ClickHouse 3
+    name: ClickHouse 3
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'ClickHouse: Running queries'
+      type: DEPENDENT
+      key: clickhouse.queries
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - ClickHouseMetrics_Query
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    - name: 'ClickHouse: Uptime in seconds'
+      type: DEPENDENT
+      key: clickhouse.uptime
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - ClickHouseAsyncMetrics_Uptime
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://zabbix_clickhouse_clickhouse3:9363/metrics
+  - host: PgBouncer exporter 1
+    name: PgBouncer exporter 1
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'PgBouncer: Exporter connection'
+      type: DEPENDENT
+      key: pgbouncer.up
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - pgbouncer_up
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://zabbix_metrics_pgbouncer-exporter1:9127/metrics
+  - host: PgBouncer exporter 2
+    name: PgBouncer exporter 2
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'PgBouncer: Exporter connection'
+      type: DEPENDENT
+      key: pgbouncer.up
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - pgbouncer_up
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://zabbix_metrics_pgbouncer-exporter2:9127/metrics
+  - host: Node exporter manager-1
+    name: Node exporter manager-1
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'Node: Load average 1 minute'
+      type: DEPENDENT
+      key: node.load1
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - node_load1
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    - name: 'Node: Available memory in bytes'
+      type: DEPENDENT
+      key: node.memory.available
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - node_memory_MemAvailable_bytes
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://REPLACE-manager-1:9100/metrics
+    status: DISABLED
+  - host: Process exporter manager-1
+    name: Process exporter manager-1
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'Process exporter: Resident memory in bytes'
+      type: DEPENDENT
+      key: exporter.memory
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - process_resident_memory_bytes
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://REPLACE-manager-1:9256/metrics
+    status: DISABLED
+  - host: cAdvisor manager-1
+    name: cAdvisor manager-1
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'cAdvisor: Version information'
+      type: DEPENDENT
+      key: cadvisor.version
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - cadvisor_version_info
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://REPLACE-manager-1:8080/metrics
+    status: DISABLED
+  - host: Node exporter manager-2
+    name: Node exporter manager-2
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'Node: Load average 1 minute'
+      type: DEPENDENT
+      key: node.load1
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - node_load1
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    - name: 'Node: Available memory in bytes'
+      type: DEPENDENT
+      key: node.memory.available
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - node_memory_MemAvailable_bytes
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://REPLACE-manager-2:9100/metrics
+    status: DISABLED
+  - host: Process exporter manager-2
+    name: Process exporter manager-2
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'Process exporter: Resident memory in bytes'
+      type: DEPENDENT
+      key: exporter.memory
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - process_resident_memory_bytes
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://REPLACE-manager-2:9256/metrics
+    status: DISABLED
+  - host: cAdvisor manager-2
+    name: cAdvisor manager-2
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'cAdvisor: Version information'
+      type: DEPENDENT
+      key: cadvisor.version
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - cadvisor_version_info
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://REPLACE-manager-2:8080/metrics
+    status: DISABLED
+  - host: Node exporter manager-3
+    name: Node exporter manager-3
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'Node: Load average 1 minute'
+      type: DEPENDENT
+      key: node.load1
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - node_load1
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    - name: 'Node: Available memory in bytes'
+      type: DEPENDENT
+      key: node.memory.available
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - node_memory_MemAvailable_bytes
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://REPLACE-manager-3:9100/metrics
+    status: DISABLED
+  - host: Process exporter manager-3
+    name: Process exporter manager-3
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'Process exporter: Resident memory in bytes'
+      type: DEPENDENT
+      key: exporter.memory
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - process_resident_memory_bytes
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://REPLACE-manager-3:9256/metrics
+    status: DISABLED
+  - host: cAdvisor manager-3
+    name: cAdvisor manager-3
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'cAdvisor: Version information'
+      type: DEPENDENT
+      key: cadvisor.version
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - cadvisor_version_info
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://REPLACE-manager-3:8080/metrics
+    status: DISABLED
+  - host: Node exporter worker-1
+    name: Node exporter worker-1
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'Node: Load average 1 minute'
+      type: DEPENDENT
+      key: node.load1
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - node_load1
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    - name: 'Node: Available memory in bytes'
+      type: DEPENDENT
+      key: node.memory.available
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - node_memory_MemAvailable_bytes
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://REPLACE-worker-1:9100/metrics
+    status: DISABLED
+  - host: Process exporter worker-1
+    name: Process exporter worker-1
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'Process exporter: Resident memory in bytes'
+      type: DEPENDENT
+      key: exporter.memory
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - process_resident_memory_bytes
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://REPLACE-worker-1:9256/metrics
+    status: DISABLED
+  - host: cAdvisor worker-1
+    name: cAdvisor worker-1
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'cAdvisor: Version information'
+      type: DEPENDENT
+      key: cadvisor.version
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - cadvisor_version_info
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://REPLACE-worker-1:8080/metrics
+    status: DISABLED
+  - host: Node exporter worker-2
+    name: Node exporter worker-2
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'Node: Load average 1 minute'
+      type: DEPENDENT
+      key: node.load1
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - node_load1
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    - name: 'Node: Available memory in bytes'
+      type: DEPENDENT
+      key: node.memory.available
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - node_memory_MemAvailable_bytes
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://REPLACE-worker-2:9100/metrics
+    status: DISABLED
+  - host: Process exporter worker-2
+    name: Process exporter worker-2
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'Process exporter: Resident memory in bytes'
+      type: DEPENDENT
+      key: exporter.memory
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - process_resident_memory_bytes
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://REPLACE-worker-2:9256/metrics
+    status: DISABLED
+  - host: cAdvisor worker-2
+    name: cAdvisor worker-2
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'cAdvisor: Version information'
+      type: DEPENDENT
+      key: cadvisor.version
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - cadvisor_version_info
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://REPLACE-worker-2:8080/metrics
+    status: DISABLED
+  - host: Node exporter worker-3
+    name: Node exporter worker-3
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'Node: Load average 1 minute'
+      type: DEPENDENT
+      key: node.load1
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - node_load1
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    - name: 'Node: Available memory in bytes'
+      type: DEPENDENT
+      key: node.memory.available
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - node_memory_MemAvailable_bytes
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://REPLACE-worker-3:9100/metrics
+    status: DISABLED
+  - host: Process exporter worker-3
+    name: Process exporter worker-3
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'Process exporter: Resident memory in bytes'
+      type: DEPENDENT
+      key: exporter.memory
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - process_resident_memory_bytes
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://REPLACE-worker-3:9256/metrics
+    status: DISABLED
+  - host: cAdvisor worker-3
+    name: cAdvisor worker-3
+    groups:
+    - name: Zabbix Swarm exporters
+    items:
+    - name: 'Prometheus: Get metrics'
+      type: HTTP_AGENT
+      key: prometheus.metrics.raw
+      delay: 1m
+      history: '0'
+      trends: '0'
+      value_type: TEXT
+      url: '{$METRICS.URL}'
+      timeout: 10s
+    - name: 'cAdvisor: Version information'
+      type: DEPENDENT
+      key: cadvisor.version
+      delay: '0'
+      value_type: FLOAT
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - cadvisor_version_info
+        - value
+        - ''
+      master_item:
+        key: prometheus.metrics.raw
+    macros:
+    - macro: '{$METRICS.URL}'
+      value: http://REPLACE-worker-3:8080/metrics
+    status: DISABLED
