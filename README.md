@@ -32,7 +32,7 @@ Install Docker, Ansible, Terraform, AWS CLI and the AWS Session Manager plugin o
 the controller. Install the collections and Python dependencies:
 
 ```bash
-python3 -m pip install 'ansible-core>=2.17,<2.20' boto3 'botocore[crt]' cryptography
+python3 -m pip install 'ansible-core>=2.19,<2.20' 'ansible-lint==25.9.2' boto3 'botocore[crt]' cryptography
 ansible-galaxy collection install -r ansible/requirements.yml -p ansible/collections
 ```
 
@@ -56,7 +56,7 @@ before a deployment that references its new tag.
 ## Deployment through GitHub Actions
 
 The single **Validate and deploy Zabbix HA** workflow runs Terraform and Ansible
-validation on pushes and pull requests. Deployment operations start only through
+validation, including ansible-lint, on pushes and pull requests. Deployment operations start only through
 `workflow_dispatch` or the ECR refresh schedule. After both validations pass,
 the `production` environment requires an explicit review by `whanada` before
 any operational job starts. Configure and verify this protection rule in GitHub;
@@ -119,6 +119,7 @@ Do not enable debug logging or print inventory variables in public workflows.
 
 ```bash
 set -a; source .env; set +a
+ansible-lint --offline -p ansible/*.yml ansible/aws/*.yml
 ansible-playbook -i localhost, ansible/aws/preflight-images.yml
 ansible-playbook -i localhost, --syntax-check ansible/aws/site.yml
 python3 tests/validate_stack_templates.py
@@ -128,6 +129,10 @@ tests/test-pgbouncer-integration.sh
 # Use an existing encrypted test overlay for the ECR refresh test.
 ZABBIX_TEST_ENCRYPTED_NETWORK=YOUR_TEST_NETWORK tests/test-ecr-auth-refresh.sh
 ```
+
+Existing lint debt is listed in `.ansible-lint-ignore` and remains visible as
+warnings. Ignores apply per file and rule, so additional findings of the same
+rule in an ignored file are also suppressed. Remove entries as the debt is fixed.
 
 The integration tests create and remove temporary test containers or services
 and require their pinned images and Docker access. The node exporter runs on an

@@ -53,8 +53,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.1.0
-      - run: python3 -m pip install 'ansible-core>=2.17,<2.20' boto3 cryptography
+      - run: python3 -m pip install 'ansible-core>=2.19,<2.20' 'ansible-lint==25.9.2' boto3 cryptography
       - run: ansible-galaxy collection install -r ansible/requirements.yml -p ansible/collections
+      - name: Lint Ansible playbooks and included tasks
+        run: ansible-lint --offline -p ansible/*.yml ansible/aws/*.yml
       - name: Check playbook syntax
         run: |
           for playbook in ansible/*.yml ansible/aws/*.yml; do

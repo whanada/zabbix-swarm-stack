@@ -1,0 +1,25 @@
+# Existing lint debt. Each entry suppresses the specified rule for the whole file.
+# Remove entries as the underlying findings are fixed.
+ansible/aws/bootstrap-aws-secrets.yml no-changed-when
+ansible/aws/bootstrap-clickhouse.yml no-changed-when
+ansible/aws/bootstrap-postgres.yml no-changed-when
+ansible/aws/create-secrets.yml no-changed-when
+ansible/aws/deploy-app.yml no-changed-when
+ansible/aws/deploy-app.yml yaml[line-length]
+ansible/aws/deploy-clickhouse.yml no-changed-when
+ansible/aws/deploy-data.yml name[play]
+ansible/aws/deploy-data.yml no-changed-when
+ansible/aws/deploy-metrics.yml no-changed-when
+ansible/aws/prepare-swarm.yml no-changed-when
+ansible/aws/prepare-swarm.yml yaml[line-length]
+ansible/aws/site.yml name[play]
+ansible/aws/tasks/clickhouse-config.yml yaml[line-length]
+ansible/aws/tasks/docker-config.yml no-changed-when
+ansible/aws/tasks/ecr-login.yml no-changed-when
+ansible/aws/tasks/prepare-volume.yml no-changed-when
+ansible/aws/tasks/refresh-ecr-service.yml name[template]
+ansible/aws/tasks/refresh-ecr-service.yml no-changed-when
+ansible/build-patroni-image.yml no-changed-when
+ansible/build-patroni-image.yml yaml[line-length]
+ansible/publish-patroni-image.yml name[play]
+ansible/traefik-encrypted-networks.yml no-changed-when
