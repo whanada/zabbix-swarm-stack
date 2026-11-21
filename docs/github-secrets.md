@@ -1,11 +1,12 @@
 # GitHub variables and AWS secrets
 
-The AWS workflows use GitHub OIDC, not permanent AWS access keys. The three IAM
+The AWS workflow uses GitHub OIDC, not permanent AWS access keys. The three IAM
 roles have been created and their ARNs configured as repository variables. The
-`production` environment is restricted to the `main` branch. Principal policy
-simulations passed, but an actual GitHub OIDC run has not yet been verified.
-The Terraform plan job does not use the environment, so its role ARN and the
-`ZABBIX_*` values must be repository-level variables.
+`production` environment is restricted to `main` and requires approval by
+`whanada`. All operational steps, including scheduled ECR refresh, wait for
+that review. Principal policy simulations passed, but a real approved OIDC run
+has not yet been verified. Keep role ARNs and `ZABBIX_*` values as repository
+variables.
 
 The reproducible IAM bootstrap is `scripts/iam/bootstrap-github-roles.sh`; it
 renders policies with `scripts/iam/render-policies.py`. The approved Terraform
@@ -29,7 +30,7 @@ repository, plus the registry-wide `ecr:GetAuthorizationToken` action.
 | Variable | `ZABBIX_VOLUME_SIZES_GB` | HCL/JSON map for `postgres`, `etcd`, `clickhouse`, `keeper` and `proxy` disks. |
 | Variable | `ZABBIX_ALLOWED_WEB_CIDRS` | HCL/JSON list of CIDRs permitted to reach ingress. |
 
-No Docker Hub token or long-lived AWS secret is required for the ECR workflow.
+No Docker Hub token or long-lived AWS secret is required for the ECR operation.
 
 ## AWS Secrets Manager
 

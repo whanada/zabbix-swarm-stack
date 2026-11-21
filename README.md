@@ -55,28 +55,31 @@ before a deployment that references its new tag.
 
 ## Deployment through GitHub Actions
 
-The workflows are manual and independent; committing or pushing starts the
-validation workflow but does not automatically apply infrastructure or deploy
-the stack. The OIDC roles and repository variables have been configured, but a
-real workflow run has not yet verified their permissions.
+The single **Validate and deploy Zabbix HA** workflow runs Terraform and Ansible
+validation on pushes and pull requests. Deployment operations start only through
+`workflow_dispatch` or the ECR refresh schedule. After both validations pass,
+the `production` environment requires an explicit review by `whanada` before
+any operational job starts. Configure and verify this protection rule in GitHub;
+an environment name alone does not enforce approval.
 
-1. Commit and push the reviewed project changes. Run **AWS infrastructure plan
-   and apply** with `apply` disabled, and inspect the plan. The S3 backend is
+1. Commit and push the changes; confirm the validation run passes.
+2. Run the workflow manually and select `deploy`. Review the selected operation
+   and approve the waiting production job in GitHub Actions.
+3. After approval, the job checks the Elastic IP quota, creates a Terraform plan
+   and immediately applies that same plan, then prepares the Swarm, EBS volumes
+   and application stack. The plan is available in the job log, but there is no
+   second approval between planning and applying. Review infrastructure changes
+   separately before approving the job. State is stored at
    `tf-states-whanada/zabbix-ha/aws/terraform.tfstate`.
-2. Run the same workflow with `apply` enabled after reviewing its plan. It
-   checks the Elastic IP quota before provisioning. The current design uses one
-   shared NAT gateway and three fixed NLB addresses: four Elastic IPs in total.
-3. Run **AWS prepare Swarm nodes**. Ansible joins three managers and three workers,
-   creates encrypted ingress, assigns placement labels and prepares each EBS disk.
-4. Run **AWS deploy monitoring stack**. Ansible prepares secrets, data services,
-   database schemas, exporters and the application. This workflow still needs
-   end-to-end validation before production use.
-5. Run the validation and failover checks in [design notes](docs/zabbix-8-design-notes.md).
+4. Run the validation and failover checks in [design notes](docs/zabbix-8-design-notes.md).
 
-**Build and publish Patroni TimescaleDB image** publishes a new image tag to ECR.
-**Refresh Swarm ECR credentials** refreshes the Patroni service credentials
-periodically and can also be run manually. Scheduled refresh depends on the
-cluster and the Ansible OIDC role being available.
+Select `publish-image` to build, test and publish a new ECR image tag, or
+`refresh-ecr` to refresh Swarm registry credentials. Both require approval.
+Scheduled ECR refresh runs are created every six hours but also wait for human
+approval: without timely approval the 12-hour ECR token expires and replacement
+tasks may be unable to pull their image. Scheduled runs can be delayed or skipped
+by GitHub. Monitor approvals and refresh failures. The complete workflow still
+requires end-to-end validation before production use.
 
 A single NAT gateway reduces cost but makes worker outbound connectivity
 dependent on one availability zone. EC2, EBS, NAT, NLB, public IPv4 addresses

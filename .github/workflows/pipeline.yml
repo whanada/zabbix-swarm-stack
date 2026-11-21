@@ -1,0 +1,162 @@
+name: Validate and deploy Zabbix HA
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Operation to run after production approval
+        type: choice
+        required: true
+        default: deploy
+        options: [deploy, publish-image, refresh-ecr]
+  schedule:
+    - cron: '17 */6 * * *'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: zabbix-ha-${{ github.event_name == 'pull_request' && github.run_id || 'pipeline' }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  AWS_DEFAULT_REGION: us-east-1
+  TF_IN_AUTOMATION: 'true'
+  TF_VAR_ami_id: ${{ vars.ZABBIX_AMI_ID }}
+  TF_VAR_manager_instance_type: ${{ vars.ZABBIX_MANAGER_INSTANCE_TYPE }}
+  TF_VAR_worker_instance_type: ${{ vars.ZABBIX_WORKER_INSTANCE_TYPE }}
+  TF_VAR_volume_sizes_gb: ${{ vars.ZABBIX_VOLUME_SIZES_GB }}
+  TF_VAR_allowed_web_cidrs: ${{ vars.ZABBIX_ALLOWED_WEB_CIDRS }}
+  ZABBIX_FRONTEND_HOST: ${{ vars.ZABBIX_FRONTEND_HOST }}
+  ZABBIX_TCP_HOST: ${{ vars.ZABBIX_TCP_HOST }}
+  INPUT_ZABBIX_APM_ENABLED: ${{ vars.ZABBIX_APM_ENABLED }}
+
+jobs:
+  validate-terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform/aws
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform fmt -check -recursive
+      - run: terraform init -backend=false -input=false -lockfile=readonly
+      - run: terraform validate -no-color
+
+  validate-ansible:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m pip install 'ansible-core>=2.17,<2.20' boto3 cryptography
+      - run: ansible-galaxy collection install -r ansible/requirements.yml -p ansible/collections
+      - name: Check playbook syntax
+        run: |
+          for playbook in ansible/*.yml ansible/aws/*.yml; do
+            [ "$playbook" = ansible/requirements.yml ] && continue
+            ansible-playbook -i 'localhost,' --syntax-check "$playbook"
+          done
+      - name: Render and validate stack templates
+        run: python3 tests/validate_stack_templates.py
+      - name: Validate example image configuration
+        run: |
+          set -a
+          source .env.example
+          set +a
+          ansible-playbook -i localhost, ansible/aws/preflight-images.yml
+      - name: Test certificate bootstrap
+        run: python3 tests/test_aws_certificates.py
+
+  production:
+    needs: [validate-terraform, validate-ansible]
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    environment: production
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - name: Install Ansible dependencies
+        run: |
+          python3 -m pip install 'ansible-core>=2.17,<2.20' boto3 botocore cryptography
+          ansible-galaxy collection install -r ansible/requirements.yml -p ansible/collections
+      - name: Configure Terraform AWS credentials
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'deploy'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_TERRAFORM_ROLE_ARN }}
+          aws-region: us-east-1
+      - name: Check Terraform inputs and Elastic IP quota
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'deploy'
+        shell: bash
+        run: |
+          for name in TF_VAR_ami_id TF_VAR_manager_instance_type TF_VAR_worker_instance_type TF_VAR_volume_sizes_gb TF_VAR_allowed_web_cidrs; do
+            if [[ -z "${!name}" ]]; then echo "Missing GitHub variable for $name" >&2; exit 1; fi
+          done
+          quota=$(aws service-quotas get-service-quota --service-code ec2 --quota-code L-0263D0A3 --query 'Quota.Value' --output text)
+          allocated=$(aws ec2 describe-addresses --query 'length(Addresses)' --output text)
+          project_allocated=$(aws ec2 describe-addresses --filters Name=tag:Project,Values=zabbix-ha --query 'length(Addresses)' --output text)
+          python3 -c 'import sys; q, used, ours = map(float, sys.argv[1:]); print(f"Elastic IP quota={q:g}, allocated={used:g}, project={ours:g}, required=4"); sys.exit(0 if q >= used - ours + 4 else 1)' "$quota" "$allocated" "$project_allocated"
+      - name: Plan and apply infrastructure
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'deploy'
+        working-directory: terraform/aws
+        run: |
+          terraform init -input=false -lockfile=readonly -backend-config=backend.hcl.example
+          terraform plan -input=false -no-color -out=tfplan
+          terraform show -no-color tfplan
+          terraform apply -input=false -no-color tfplan
+      - name: Configure Ansible AWS credentials
+        if: github.event_name == 'schedule' || inputs.operation == 'deploy' || inputs.operation == 'refresh-ecr'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ANSIBLE_ROLE_ARN }}
+          aws-region: us-east-1
+      - name: Install AWS Session Manager plugin
+        if: github.event_name == 'schedule' || inputs.operation == 'deploy' || inputs.operation == 'refresh-ecr'
+        run: |
+          curl -fsSL https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb -o /tmp/session-manager-plugin.deb
+          sudo dpkg -i /tmp/session-manager-plugin.deb
+      - name: Read SSM transfer bucket from Terraform state
+        if: github.event_name == 'schedule' || inputs.operation == 'deploy' || inputs.operation == 'refresh-ecr'
+        working-directory: terraform/aws
+        run: |
+          terraform init -input=false -lockfile=readonly -backend-config=backend.hcl.example
+          echo "ANSIBLE_SSM_BUCKET=$(terraform output -raw ansible_transfer_bucket)" >> "$GITHUB_ENV"
+      - name: Configure Swarm and deploy stack
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'deploy'
+        run: |
+          set -a
+          source .env.example
+          set +a
+          export ZABBIX_APM_ENABLED="${INPUT_ZABBIX_APM_ENABLED:-false}"
+          test -n "$ZABBIX_FRONTEND_HOST"
+          test -n "$ZABBIX_TCP_HOST"
+          ansible-inventory -i ansible/inventory/aws.aws_ec2.yml --graph
+          ansible-playbook -i ansible/inventory/aws.aws_ec2.yml ansible/aws/prepare-swarm.yml
+          ansible-playbook -i ansible/inventory/aws.aws_ec2.yml ansible/aws/prepare-volumes.yml
+          ansible-playbook -i ansible/inventory/aws.aws_ec2.yml ansible/aws/site.yml
+      - name: Refresh Swarm ECR authorization
+        if: github.event_name == 'schedule' || inputs.operation == 'refresh-ecr'
+        run: |
+          set -a
+          source .env.example
+          set +a
+          ansible-playbook -i ansible/inventory/aws.aws_ec2.yml ansible/aws/refresh-ecr-auth.yml
+      - name: Configure image publisher AWS credentials
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'publish-image'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ECR_PUBLISH_ROLE_ARN }}
+          aws-region: us-east-1
+      - name: Build, test and publish Patroni image
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'publish-image'
+        run: |
+          set -a
+          source .env.example
+          set +a
+          ansible-playbook -i localhost, ansible/publish-patroni-image.yml

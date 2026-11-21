@@ -19,14 +19,11 @@ tests initialize PostgreSQL, enable TimescaleDB, apply the Zabbix schema and
 verify ten hypertables. The playbook logs in with a short-lived token and
 removes its temporary Docker configuration afterward.
 
-The manual GitHub workflow **Build and publish Patroni TimescaleDB image** uses
-OIDC through `AWS_ECR_PUBLISH_ROLE_ARN`; it does not require a Docker Hub token.
-The workflow itself remains to be tested after the code is pushed.
+The single GitHub workflow supports the `publish-image` operation using OIDC
+through `AWS_ECR_PUBLISH_ROLE_ARN`. It requires approval in `production` and does
+not require a Docker Hub token. The approved workflow has not yet been tested.
 
-ECR authentication tokens expire after 12 hours. Ansible passes a fresh token
-to Swarm during deployment. **Refresh Swarm ECR credentials** refreshes the
-three Patroni services every six hours and can be run manually. A running task
-does not stop when the token expires, but a later image pull can fail. Monitor
-workflow failures and scheduling delays: GitHub does not guarantee an exact
-schedule. The refresh playbook was tested on a temporary local Swarm service,
-not yet on the AWS cluster.
+ECR tokens expire after 12 hours. The six-hour scheduled refresh also requires
+human approval; monitor pending approvals and failures so replacement tasks can
+pull the image. GitHub does not guarantee an exact schedule. The refresh playbook
+was tested on a temporary local Swarm service, not yet on the AWS cluster.

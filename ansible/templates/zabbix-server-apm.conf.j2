@@ -1,3 +1,0 @@
-# Zabbix 8 server queries the shared telemetry data source configured in the UI.
-# It does not receive OTLP; the APM-capable proxy does that.
-StartTelemetryQueryPollers={{ zabbix_start_telemetry_query_pollers | default(1) | int }}

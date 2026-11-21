@@ -8,9 +8,9 @@
 <text x="77" y="192" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">Push / PR triggers validation</text>
 <text x="77" y="214" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">No automatic infrastructure apply</text>
 <rect x="460" y="140" width="360" height="95" rx="12" fill="#ecfdf5" stroke="#cbd5e1" stroke-width="1.5"/>
-<text x="477" y="167" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="700" fill="#152942">Terraform workflow — manual</text>
-<text x="477" y="192" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">Plan and review • optional apply</text>
-<text x="477" y="214" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">State: S3 / zabbix-ha/aws/</text>
+<text x="477" y="167" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="700" fill="#152942">Production approval</text>
+<text x="477" y="192" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">Required after validation</text>
+<text x="477" y="214" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">whanada reviews the selected operation</text>
 <rect x="930" y="140" width="400" height="95" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
 <text x="947" y="167" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="700" fill="#152942">AWS resources</text>
 <text x="947" y="192" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">VPC • EC2 • EBS • NAT • NLB</text>
@@ -18,17 +18,17 @@
 <polyline points="360,185 460,185" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
 <polyline points="820,185 930,185" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
 <rect x="60" y="340" width="350" height="110" rx="12" fill="#fff8e8" stroke="#eccd87" stroke-width="1.5"/>
-<text x="77" y="367" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="700" fill="#152942">Image workflow — manual</text>
+<text x="77" y="367" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="700" fill="#152942">Publish image — approved</text>
 <text x="77" y="392" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">Ansible build + database tests</text>
 <text x="77" y="414" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">Publish versioned Patroni image to ECR</text>
 <text x="77" y="436" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">Existing tags are not overwritten</text>
 <rect x="510" y="340" width="350" height="110" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
-<text x="527" y="367" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="700" fill="#152942">Prepare Swarm — manual</text>
-<text x="527" y="392" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">SSM inventory and EC2 tags</text>
+<text x="527" y="367" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="700" fill="#152942">Deploy — approved</text>
+<text x="527" y="392" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">Terraform plan and apply</text>
 <text x="527" y="414" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">Join 3 managers + 3 workers</text>
 <text x="527" y="436" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">Encrypted networks, labels and EBS</text>
 <rect x="970" y="340" width="400" height="110" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
-<text x="987" y="367" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="700" fill="#152942">Deploy stack — manual</text>
+<text x="987" y="367" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="700" fill="#152942">Deploy stack — Ansible</text>
 <text x="987" y="392" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">Secrets → data → schema → services</text>
 <text x="987" y="414" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">AWS Secrets Manager + Swarm secrets</text>
 <text x="987" y="436" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">Validate APM and failover separately</text>
@@ -41,9 +41,9 @@
 <text x="77" y="602" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">Patroni / TimescaleDB image</text>
 <text x="77" y="624" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">12-hour registry token</text>
 <rect x="510" y="550" width="350" height="100" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
-<text x="527" y="577" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="700" fill="#152942">Credential refresh — scheduled</text>
-<text x="527" y="602" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">Ansible refreshes Swarm auth every 6 h</text>
-<text x="527" y="624" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">Monitor delays and workflow failures</text>
+<text x="527" y="577" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="700" fill="#152942">Credential refresh — approval</text>
+<text x="527" y="602" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">Scheduled every 6 h; approval required</text>
+<text x="527" y="624" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">Monitor pending runs and token expiry</text>
 <rect x="970" y="550" width="400" height="100" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
 <text x="987" y="577" font-family="DejaVu Sans,sans-serif" font-size="17" font-weight="700" fill="#152942">Client trust</text>
 <text x="987" y="602" font-family="DejaVu Sans,sans-serif" font-size="14" font-weight="400" fill="#415571">Private CA in Secrets Manager</text>

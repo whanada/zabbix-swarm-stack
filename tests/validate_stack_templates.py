@@ -13,10 +13,10 @@ ROOT = Path(__file__).resolve().parent.parent
 env = Environment(loader=FileSystemLoader(ROOT / "ansible/aws/templates"), undefined=StrictUndefined)
 env.filters["to_json"] = json.dumps
 server_vars = yaml.safe_load((ROOT / "ansible/aws/vars/server.yml").read_text())["zabbix_server_environment"]
-previous = yaml.safe_load((ROOT / "ha_server.yml").read_text())["x-server-environment"]
-missing = set(previous) - set(server_vars)
+required_keys = {line for line in (ROOT / "tests/fixtures/legacy-server-environment.txt").read_text().splitlines() if line and not line.startswith("#")}
+missing = required_keys - set(server_vars)
 if missing:
-    raise SystemExit(f"Variáveis anteriores do servidor ausentes: {sorted(missing)}")
+    raise SystemExit(f"Required server environment variables missing: {sorted(missing)}")
 
 common = dict(
     etcd_image="quay.io/coreos/etcd:v3.5.21",
