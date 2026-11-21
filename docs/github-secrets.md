@@ -14,7 +14,8 @@ policies with `scripts/iam/render-policies.py`. Immutable subject IDs are
 required when enabled for the repository. The approved Terraform
 role can manage EC2 and load balancers in `us-east-1`, the specified state path,
 the dedicated SSM bucket, and project node IAM profiles. The Ansible role limits
-SSM sessions to instances tagged `Project=zabbix-ha`, secrets to `zabbix-ha/`,
+SSM sessions to instances tagged `Project=zabbix-ha` and the default
+`SSM-SessionManagerRunShell` document, secrets to `zabbix-ha/`,
 and ECR access to pull. The ECR publisher role can push only to the selected ECR
 repository, plus the registry-wide `ecr:GetAuthorizationToken` action.
 

@@ -49,28 +49,65 @@
     - name: Check ingress network options
       ansible.builtin.command: docker network inspect ingress
       register: ingress_network
+      failed_when: false
       changed_when: false
       check_mode: false
+      when: not ansible_check_mode
+    - name: Reject unexpected errors when inspecting ingress
+      ansible.builtin.assert:
+        that:
+          - ingress_network.rc == 0 or 'no such network' in (ingress_network.stderr | lower) or 'network ingress not found' in (ingress_network.stderr | lower)
+        fail_msg: Docker could not inspect the ingress network; diagnose on the manager.
+      when: not ansible_check_mode
+    - name: Determine whether ingress needs replacement
+      ansible.builtin.set_fact:
+        replace_ingress: "{{ ingress_network.rc == 0 and 'encrypted' not in ((ingress_network.stdout | from_json | first).Options | default({}, true)) }}"
       when: not ansible_check_mode
     - name: List services before changing ingress
       ansible.builtin.command: docker service ls --quiet
       register: existing_services
       changed_when: false
-      when:
-        - not ansible_check_mode
-        - "'encrypted' not in ((ingress_network.stdout | from_json | first).Options | default({}, true))"
+      when: not ansible_check_mode and replace_ingress | bool
     - name: Refuse to replace ingress on an existing deployment
       ansible.builtin.assert:
         that: existing_services.stdout | trim | length == 0
         fail_msg: Existing Swarm ingress is not encrypted and services exist; migrate ingress deliberately.
-      when: existing_services is not skipped
-    - name: Remove default unencrypted ingress
-      ansible.builtin.command: docker network rm ingress
-      when: existing_services is not skipped
+      when: not ansible_check_mode and replace_ingress | bool
+    - name: Remove default unencrypted ingress with confirmation
+      ansible.builtin.command:
+        argv: [docker, network, rm, ingress]
+        stdin: "y"
+      when: not ansible_check_mode and replace_ingress | bool
+    - name: Wait until the previous ingress network is removed
+      ansible.builtin.command: docker network inspect ingress
+      register: removed_ingress
+      changed_when: false
+      failed_when: false
+      retries: 15
+      delay: 2
+      until: >-
+        removed_ingress.rc != 0 and
+        ('no such network' in (removed_ingress.stderr | lower) or
+         'network ingress not found' in (removed_ingress.stderr | lower))
+      when: not ansible_check_mode and replace_ingress | bool
     - name: Create encrypted ingress network
       ansible.builtin.command:
         argv: [docker, network, create, --driver, overlay, --ingress, --opt, encrypted, --subnet, "{{ swarm_ingress_subnet }}", ingress]
-      when: existing_services is not skipped
+      when: not ansible_check_mode and (replace_ingress | bool or ingress_network.rc != 0)
+    - name: Inspect the resulting ingress network
+      ansible.builtin.command: docker network inspect ingress
+      register: final_ingress
+      changed_when: false
+      when: not ansible_check_mode
+    - name: Verify ingress is an encrypted Swarm overlay
+      ansible.builtin.assert:
+        that:
+          - (final_ingress.stdout | from_json | first).Ingress | bool
+          - (final_ingress.stdout | from_json | first).Driver == 'overlay'
+          - (final_ingress.stdout | from_json | first).Scope == 'swarm'
+          - "'encrypted' in ((final_ingress.stdout | from_json | first).Options | default({}, true))"
+        fail_msg: Ingress must be an encrypted Swarm overlay before deployment continues.
+      when: not ansible_check_mode
     - name: Read manager join token
       ansible.builtin.command: docker swarm join-token -q manager
       register: manager_join_token

@@ -71,6 +71,7 @@ ansible = policy(state_read + [
                'ssm:DescribeInstanceInformation'], '*', Condition={'StringEquals': {'aws:RequestedRegion': region}}),
     statement(['ssm:StartSession'], f'arn:aws:ec2:{region}:{account}:instance/*',
               Condition={'StringEquals': {'ssm:resourceTag/Project': project}}),
+    statement(['ssm:StartSession'], f'arn:aws:ssm:{region}:{account}:document/SSM-SessionManagerRunShell'),
     statement(['ssm:TerminateSession', 'ssm:ResumeSession', 'ssmmessages:OpenDataChannel'],
               f'arn:aws:ssm:{region}:{account}:session/*'),
     statement(['s3:GetBucketLocation', 's3:ListBucket'], transfer_bucket),
