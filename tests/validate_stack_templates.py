@@ -54,8 +54,11 @@ common = dict(
     zabbix_web_hostname="zabbix.example.org",
 )
 for n in range(1, 4):
-    for name in ("clickhouse-server.xml.j2", "clickhouse-keeper.xml.j2"):
-        ElementTree.fromstring(env.get_template(name).render(clickhouse_node=n))
+    server = ElementTree.fromstring(env.get_template("clickhouse-server.xml.j2").render(clickhouse_node=n))
+    ElementTree.fromstring(env.get_template("clickhouse-keeper.xml.j2").render(clickhouse_node=n))
+    assert server.findtext("distributed_ddl/host_name") == f"tasks.clickhouse{n}"
+    assert server.findtext("interserver_http_host") == f"tasks.clickhouse{n}"
+    assert f"tasks.clickhouse{n}" in [node.text for node in server.findall("remote_servers/zabbix_cluster/shard/replica/host")]
 
 traefik = yaml.safe_load(env.get_template("traefik-dynamic.yml.j2").render(**common))
 addresses = traefik["tcp"]["services"]["zabbix-server"]["loadBalancer"]["servers"]

@@ -1,11 +1,13 @@
 <clickhouse>
   <listen_host>0.0.0.0</listen_host>
+  <interserver_http_host>tasks.clickhouse{{ clickhouse_node }}</interserver_http_host>
+  <distributed_ddl><host_name>tasks.clickhouse{{ clickhouse_node }}</host_name></distributed_ddl>
   <remote_servers>
     <zabbix_cluster>
       <shard>
         <internal_replication>true</internal_replication>
 {% for n in range(1, 4) %}
-        <replica><host>clickhouse{{ n }}</host><port>9000</port></replica>
+        <replica><host>tasks.clickhouse{{ n }}</host><port>9000</port></replica>
 {% endfor %}
       </shard>
     </zabbix_cluster>

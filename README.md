@@ -105,6 +105,15 @@ aws secretsmanager get-secret-value --region us-east-1 \
 Protect the CA private key. Swarm secrets are immutable, and certificate
 renewal and rotation are not yet automated.
 
+## Host tuning
+
+The deployment workflow runs `ansible/aws/tuning.yml` on all Swarm nodes before
+deploying the stack. It applies the configured kernel values and persists PAM,
+systemd and Docker resource limits. Docker and containerd configuration changes
+require a planned rolling service restart; systemd manager defaults require a
+manager reexecution or reboot. The playbook does not restart cluster services.
+Review the tuning values against the available EC2 memory before applying them.
+
 ## Ansible log privacy
 
 Deployment plays default to `no_log: true` and the GitHub workflow explicitly

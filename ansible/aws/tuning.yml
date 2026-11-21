@@ -1,0 +1,139 @@
+---
+- name: Apply host tuning before deploying the stack
+  hosts: swarm_nodes
+  no_log: "{{ lookup('env', 'ZABBIX_ANSIBLE_NO_LOG') | default('true', true) | bool }}"
+  become: true
+  gather_facts: false
+  vars:
+    tuning_docker_settings:
+      default-ulimits:
+        nofile:
+          Name: nofile
+          Soft: 65536
+          Hard: 1048576
+      log-driver: json-file
+      log-opts:
+        max-size: 100m
+        max-file: '5'
+      ipv6: false
+      ip6tables: false
+      max-concurrent-downloads: 2
+      max-download-attempts: 10
+  tasks:
+    - name: Persist kernel modules for the tuning settings
+      ansible.builtin.copy:
+        src: files/tuning-modules.conf
+        dest: /etc/modules-load.d/90-zabbix-swarm.conf
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Inspect required kernel modules
+      ansible.builtin.stat:
+        path: "/sys/module/{{ item }}"
+      loop: [nf_conntrack, br_netfilter, overlay]
+      register: tuning_modules
+
+    - name: Load missing kernel modules
+      ansible.builtin.command:
+        argv: [modprobe, "{{ item.item }}"]
+      loop: "{{ tuning_modules.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when: not item.stat.exists and not ansible_check_mode
+      changed_when: true
+
+    - name: Persist kernel tuning parameters
+      ansible.builtin.copy:
+        src: files/tuning-sysctl.conf
+        dest: /etc/sysctl.d/90-zabbix-swarm.conf
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Check current kernel tuning values
+      ansible.builtin.script: files/check-tuning.py /etc/sysctl.d/90-zabbix-swarm.conf
+      args:
+        executable: /usr/bin/python3
+      register: tuning_check
+      changed_when: false
+      failed_when: tuning_check.rc not in [0, 1]
+      when: not ansible_check_mode
+
+    - name: Apply kernel tuning values when they differ
+      ansible.builtin.command:
+        argv: [sysctl, -p, /etc/sysctl.d/90-zabbix-swarm.conf]
+      when: not ansible_check_mode and tuning_check.rc == 1
+      changed_when: true
+
+    - name: Persist login resource limits
+      ansible.builtin.copy:
+        src: files/tuning-limits.conf
+        dest: /etc/security/limits.d/90-zabbix-swarm.conf
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Ensure systemd override directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      loop:
+        - /etc/systemd/system.conf.d
+        - /etc/systemd/system/docker.service.d
+        - /etc/systemd/system/containerd.service.d
+
+    - name: Persist systemd manager resource limits
+      ansible.builtin.copy:
+        src: files/tuning-systemd.conf
+        dest: /etc/systemd/system.conf.d/90-zabbix-swarm.conf
+        owner: root
+        group: root
+        mode: '0644'
+      register: tuning_systemd_manager
+
+    - name: Persist Docker and containerd service resource limits
+      ansible.builtin.copy:
+        src: files/tuning-service.conf
+        dest: "/etc/systemd/system/{{ item }}.service.d/90-zabbix-swarm-limits.conf"
+        owner: root
+        group: root
+        mode: '0644'
+      loop: [docker, containerd]
+      register: tuning_systemd_services
+
+    - name: Reload systemd unit definitions when needed
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+      when: tuning_systemd_manager is changed or tuning_systemd_services is changed
+
+    - name: Inspect existing Docker daemon configuration
+      ansible.builtin.stat:
+        path: /etc/docker/daemon.json
+      register: tuning_docker_file
+
+    - name: Read existing Docker daemon configuration
+      ansible.builtin.slurp:
+        src: /etc/docker/daemon.json
+      register: tuning_docker_existing
+      when: tuning_docker_file.stat.exists
+
+    - name: Persist merged Docker tuning settings
+      ansible.builtin.copy:
+        content: >-
+          {{ (tuning_docker_existing.content | b64decode | from_json if tuning_docker_file.stat.exists else {})
+             | combine(tuning_docker_settings, recursive=True) | to_nice_json }}
+        dest: /etc/docker/daemon.json
+        owner: root
+        group: root
+        mode: '0644'
+        validate: 'dockerd --validate --config-file %s'
+      register: tuning_docker_config
+
+    - name: Report pending service restarts for persistent tuning
+      ansible.builtin.debug:
+        msg: Docker and containerd limit changes require a planned rolling restart; systemd manager defaults require reexecution or reboot.
+      when: tuning_docker_config is changed or tuning_systemd_services is changed or tuning_systemd_manager is changed
