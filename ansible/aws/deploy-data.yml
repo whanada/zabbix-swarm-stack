@@ -13,8 +13,8 @@
     - vars/images.yml
   vars:
     patroni_contents: "{{ lookup('file', playbook_dir + '/files/patroni.yml') }}"
-    haproxy_contents: "{{ lookup('file', playbook_dir + '/files/haproxy.cfg') }}"
-    pgbouncer_haproxy_contents: "{{ lookup('file', playbook_dir + '/files/pgbouncer-haproxy.cfg') }}"
+    haproxy_contents: "{{ lookup('file', playbook_dir + '/files/haproxy.cfg', rstrip=False) }}"
+    pgbouncer_haproxy_contents: "{{ lookup('file', playbook_dir + '/files/pgbouncer-haproxy.cfg', rstrip=False) }}"
     patroni_config_name: "zbx_patroni_{{ (patroni_contents | hash('sha256'))[:12] }}"
     haproxy_config_name: "zbx_db_haproxy_{{ (haproxy_contents | hash('sha256'))[:12] }}"
     pgbouncer_haproxy_config_name: "zbx_pool_haproxy_{{ (pgbouncer_haproxy_contents | hash('sha256'))[:12] }}"

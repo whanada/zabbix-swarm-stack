@@ -7,7 +7,7 @@
   vars_files:
     - vars/images.yml
   vars:
-    clickhouse_haproxy_contents: "{{ lookup('file', playbook_dir + '/files/clickhouse-haproxy.cfg') }}"
+    clickhouse_haproxy_contents: "{{ lookup('file', playbook_dir + '/files/clickhouse-haproxy.cfg', rstrip=False) }}"
     clickhouse_haproxy_config_name: "zbx_ch_haproxy_{{ (clickhouse_haproxy_contents | hash('sha256'))[:12] }}"
   tasks:
     - name: Require ClickHouse Swarm secret
